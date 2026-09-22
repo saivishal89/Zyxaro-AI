@@ -1,0 +1,121 @@
+.stepper-root {
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+}
+
+.stepper-indicators {
+  display: flex;
+  align-items: center;
+  gap: 0;
+}
+
+.stepper-indicator-wrapper {
+  display: flex;
+  align-items: center;
+  flex: 1;
+}
+
+.stepper-indicator-wrapper:last-child {
+  flex: none;
+}
+
+.stepper-dot {
+  width: 30px;
+  height: 30px;
+  border-radius: 50%;
+  border: 2px solid rgba(255, 255, 255, 0.12);
+  background: rgba(255, 255, 255, 0.05);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  flex-shrink: 0;
+  transition: background 0.25s, border-color 0.25s, box-shadow 0.25s, transform 0.2s;
+}
+
+.stepper-dot.active {
+  transform: scale(1.1);
+}
+
+.stepper-dot:hover {
+  border-color: rgba(255, 255, 255, 0.25);
+}
+
+.stepper-connector {
+  flex: 1;
+  height: 2px;
+  background: rgba(255, 255, 255, 0.08);
+  border-radius: 1px;
+  overflow: hidden;
+  margin: 0 4px;
+}
+
+.stepper-connector-fill {
+  height: 100%;
+  border-radius: 1px;
+  transition: width 0.4s cubic-bezier(0.65, 0, 0.35, 1);
+}
+
+.stepper-content {
+  min-height: 80px;
+  padding: 16px;
+  background: rgba(255, 255, 255, 0.03);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 10px;
+}
+
+.stepper-step-content {
+  animation: stepper-fade-in 0.25s ease;
+}
+
+@keyframes stepper-fade-in {
+  from { opacity: 0; transform: translateY(6px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+.stepper-nav {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.stepper-btn {
+  padding: 8px 18px;
+  border-radius: 8px;
+  border: none;
+  font-size: 0.8rem;
+  font-weight: 600;
+  cursor: pointer;
+  font-family: 'Exo 2', sans-serif;
+  letter-spacing: 0.04em;
+  transition: opacity 0.15s, transform 0.1s;
+}
+
+.stepper-btn:disabled {
+  opacity: 0.3;
+  cursor: not-allowed;
+}
+
+.stepper-btn:not(:disabled):hover {
+  transform: translateY(-1px);
+}
+
+.stepper-btn-back {
+  background: rgba(255, 255, 255, 0.06);
+  color: #94A3B8;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.stepper-btn-next {
+  color: #fff;
+  border: none;
+  margin-left: auto;
+}
+
+.stepper-progress-text {
+  font-size: 0.72rem;
+  color: #475569;
+  font-family: monospace;
+  letter-spacing: 0.1em;
+}

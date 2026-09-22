@@ -1,0 +1,1512 @@
+## Integrate the <FloatingLines /> component from React Bits
+You are helping integrate an open-source React component into an existing application.
+### Component: FloatingLines
+### Variant: JavaScript + CSS
+### Dependencies: three
+---
+### Usage Example
+```jsx
+import FloatingLines from './FloatingLines';
+<div style={{ width: '100%', height: '600px', position: 'relative' }}>
+  <FloatingLines 
+    enabledWaves={['top', 'middle', 'bottom']}
+    // Array - specify line count per wave; Number - same count for all waves
+    lineCount={[10, 15, 20]}
+    // Array - specify line distance per wave; Number - same distance for all waves
+    lineDistance={[8, 6, 4]}
+    bendRadius={5.0}
+    bendStrength={-0.5}
+    interactive={true}
+    parallax={true}
+  />
+</div>
+```
+### Props
+| Prop | Type | Default | Description |
+|------|------|---------|-------------|
+| linesGradient | string[] | undefined | Array of hex color strings for gradient coloring of lines (max 8 colors). |
+| enabledWaves | Array<'top' | 'middle' | 'bottom'> | ['top', 'middle', 'bottom'] | Which wave layers to display. Can toggle individual waves on/off. |
+| lineCount | number | number[] | [6] | Number of lines per wave. Single number applies to all waves, or array for per-wave control. |
+| lineDistance | number | number[] | [5] | Spacing between lines. Single number applies to all waves, or array for per-wave control. |
+| topWavePosition | { x: number; y: number; rotate: number } | undefined | Position and rotation settings for the top wave layer. |
+| middleWavePosition | { x: number; y: number; rotate: number } | undefined | Position and rotation settings for the middle wave layer. |
+| bottomWavePosition | { x: number; y: number; rotate: number } | { x: 2.0, y: -0.7, rotate: -1 } | Position and rotation settings for the bottom wave layer. |
+| animationSpeed | number | 1 | Speed multiplier for the wave animation. |
+| interactive | boolean | true | Whether the lines react to mouse/pointer movement. |
+| bendRadius | number | 10.0 | Radius of the area affected by mouse interaction. |
+| bendStrength | number | -5.0 | Intensity of the bend effect when interacting with mouse. |
+| mouseDamping | number | 0.05 | Smoothing factor for mouse movement tracking (0-1). |
+| parallax | boolean | true | Enable parallax effect with mouse movement. |
+| parallaxStrength | number | 0.2 | Strength of the parallax effect. |
+| mixBlendMode | React.CSSProperties['mixBlendMode'] | 'screen' | CSS mix-blend-mode applied to the canvas element. |
+### Full Component Source
+```jsx
+import { useEffect, useRef } from 'react';
+import {
+  Clock,
+  Mesh,
+  OrthographicCamera,
+  PlaneGeometry,
+  Scene,
+  ShaderMaterial,
+  Vector2,
+  Vector3,
+  WebGLRenderer
+} from 'three';
+import './FloatingLines.css';
+const vertexShader = `
+precision highp float;
+void main() {
+  gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+}
+`;
+const fragmentShader = `
+precision highp float;
+uniform float iTime;
+uniform vec3  iResolution;
+uniform float animationSpeed;
+uniform bool enableTop;
+uniform bool enableMiddle;
+uniform bool enableBottom;
+uniform int topLineCount;
+uniform int middleLineCount;
+uniform int bottomLineCount;
+uniform float topLineDistance;
+uniform float middleLineDistance;
+uniform float bottomLineDistance;
+uniform vec3 topWavePosition;
+uniform vec3 middleWavePosition;
+uniform vec3 bottomWavePosition;
+uniform vec2 iMouse;
+uniform bool interactive;
+uniform float bendRadius;
+uniform float bendStrength;
+uniform float bendInfluence;
+uniform bool parallax;
+uniform float parallaxStrength;
+uniform vec2 parallaxOffset;
+uniform vec3 lineGradient[8];
+uniform int lineGradientCount;
+const vec3 BLACK = vec3(0.0);
+const vec3 PINK  = vec3(233.0, 71.0, 245.0) / 255.0;
+const vec3 BLUE  = vec3(47.0,  75.0, 162.0) / 255.0;
+mat2 rotate(float r) {
+  return mat2(cos(r), sin(r), -sin(r), cos(r));
+}
+vec3 background_color(vec2 uv) {
+  vec3 col = vec3(0.0);
+  float y = sin(uv.x - 0.2) * 0.3 - 0.1;
+  float m = uv.y - y;
+  col += mix(BLUE, BLACK, smoothstep(0.0, 1.0, abs(m)));
+  col += mix(PINK, BLACK, smoothstep(0.0, 1.0, abs(m - 0.8)));
+  return col * 0.5;
+}
+vec3 getLineColor(float t, vec3 baseColor) {
+  if (lineGradientCount <= 0) {
+    return baseColor;
+  }
+  vec3 gradientColor;
+  
+  if (lineGradientCount == 1) {
+    gradientColor = lineGradient[0];
+  } else {
+    float clampedT = clamp(t, 0.0, 0.9999);
+    float scaled = clampedT * float(lineGradientCount - 1);
+    int idx = int(floor(scaled));
+    float f = fract(scaled);
+    int idx2 = min(idx + 1, lineGradientCount - 1);
+    vec3 c1 = lineGradient[idx];
+    vec3 c2 = lineGradient[idx2];
+    
+    gradientColor = mix(c1, c2, f);
+  }
+  
+  return gradientColor * 0.5;
+}
+  float wave(vec2 uv, float offset, vec2 screenUv, vec2 mouseUv, bool shouldBend) {
+  float time = iTime * animationSpeed;
+  float x_offset   = offset;
+  float x_movement = time * 0.1;
+  float amp        = sin(offset + time * 0.2) * 0.3;
+  float y          = sin(uv.x + x_offset + x_movement) * amp;
+  if (shouldBend) {
+    vec2 d = screenUv - mouseUv;
+    float influence = exp(-dot(d, d) * bendRadius); // radial falloff around cursor
+    float bendOffset = (mouseUv.y - screenUv.y) * influence * bendStrength * bendInfluence;
+    y += bendOffset;
+  }
+  float m = uv.y - y;
+  return 0.0175 / max(abs(m) + 0.01, 1e-3) + 0.01;
+}
+void mainImage(out vec4 fragColor, in vec2 fragCoord) {
+  vec2 baseUv = (2.0 * fragCoord - iResolution.xy) / iResolution.y;
+  baseUv.y *= -1.0;
+  
+  if (parallax) {
+    baseUv += parallaxOffset;
+  }
+  vec3 col = vec3(0.0);
+  vec3 b = lineGradientCount > 0 ? vec3(0.0) : background_color(baseUv);
+  vec2 mouseUv = vec2(0.0);
+  if (interactive) {
+    mouseUv = (2.0 * iMouse - iResolution.xy) / iResolution.y;
+    mouseUv.y *= -1.0;
+  }
+  
+  if (enableBottom) {
+    for (int i = 0; i < bottomLineCount; ++i) {
+      float fi = float(i);
+      float t = fi / max(float(bottomLineCount - 1), 1.0);
+      vec3 lineCol = getLineColor(t, b);
+      
+      float angle = bottomWavePosition.z * log(length(baseUv) + 1.0);
+      vec2 ruv = baseUv * rotate(angle);
+      col += lineCol * wave(
+        ruv + vec2(bottomLineDistance * fi + bottomWavePosition.x, bottomWavePosition.y),
+        1.5 + 0.2 * fi,
+        baseUv,
+        mouseUv,
+        interactive
+      ) * 0.2;
+    }
+  }
+  if (enableMiddle) {
+    for (int i = 0; i < middleLineCount; ++i) {
+      float fi = float(i);
+      float t = fi / max(float(middleLineCount - 1), 1.0);
+      vec3 lineCol = getLineColor(t, b);
+      
+      float angle = middleWavePosition.z * log(length(baseUv) + 1.0);
+      vec2 ruv = baseUv * rotate(angle);
+      col += lineCol * wave(
+        ruv + vec2(middleLineDistance * fi + middleWavePosition.x, middleWavePosition.y),
+        2.0 + 0.15 * fi,
+        baseUv,
+        mouseUv,
+        interactive
+      );
+    }
+  }
+  if (enableTop) {
+    for (int i = 0; i < topLineCount; ++i) {
+      float fi = float(i);
+      float t = fi / max(float(topLineCount - 1), 1.0);
+      vec3 lineCol = getLineColor(t, b);
+      
+      float angle = topWavePosition.z * log(length(baseUv) + 1.0);
+      vec2 ruv = baseUv * rotate(angle);
+      ruv.x *= -1.0;
+      col += lineCol * wave(
+        ruv + vec2(topLineDistance * fi + topWavePosition.x, topWavePosition.y),
+        1.0 + 0.2 * fi,
+        baseUv,
+        mouseUv,
+        interactive
+      ) * 0.1;
+    }
+  }
+  fragColor = vec4(col, 1.0);
+}
+void main() {
+  vec4 color = vec4(0.0);
+  mainImage(color, gl_FragCoord.xy);
+  gl_FragColor = color;
+}
+`;
+const MAX_GRADIENT_STOPS = 8;
+function hexToVec3(hex) {
+  let value = hex.trim();
+  if (value.startsWith('#')) {
+    value = value.slice(1);
+  }
+  let r = 255;
+  let g = 255;
+  let b = 255;
+  if (value.length === 3) {
+    r = parseInt(value[0] + value[0], 16);
+    g = parseInt(value[1] + value[1], 16);
+    b = parseInt(value[2] + value[2], 16);
+  } else if (value.length === 6) {
+    r = parseInt(value.slice(0, 2), 16);
+    g = parseInt(value.slice(2, 4), 16);
+    b = parseInt(value.slice(4, 6), 16);
+  }
+  return new Vector3(r / 255, g / 255, b / 255);
+}
+export default function FloatingLines({
+  linesGradient,
+  enabledWaves = ['top', 'middle', 'bottom'],
+  lineCount = [6],
+  lineDistance = [5],
+  topWavePosition,
+  middleWavePosition,
+  bottomWavePosition = { x: 2.0, y: -0.7, rotate: -1 },
+  animationSpeed = 1,
+  interactive = true,
+  bendRadius = 5.0,
+  bendStrength = -0.5,
+  mouseDamping = 0.05,
+  parallax = true,
+  parallaxStrength = 0.2,
+  mixBlendMode = 'screen'
+}) {
+  const containerRef = useRef(null);
+  const targetMouseRef = useRef(new Vector2(-1000, -1000));
+  const currentMouseRef = useRef(new Vector2(-1000, -1000));
+  const targetInfluenceRef = useRef(0);
+  const currentInfluenceRef = useRef(0);
+  const targetParallaxRef = useRef(new Vector2(0, 0));
+  const currentParallaxRef = useRef(new Vector2(0, 0));
+  const getLineCount = waveType => {
+    if (typeof lineCount === 'number') return lineCount;
+    if (!enabledWaves.includes(waveType)) return 0;
+    const index = enabledWaves.indexOf(waveType);
+    return lineCount[index] ?? 6;
+  };
+  const getLineDistance = waveType => {
+    if (typeof lineDistance === 'number') return lineDistance;
+    if (!enabledWaves.includes(waveType)) return 0.1;
+    const index = enabledWaves.indexOf(waveType);
+    return lineDistance[index] ?? 0.1;
+  };
+  const topLineCount = enabledWaves.includes('top') ? getLineCount('top') : 0;
+  const middleLineCount = enabledWaves.includes('middle') ? getLineCount('middle') : 0;
+  const bottomLineCount = enabledWaves.includes('bottom') ? getLineCount('bottom') : 0;
+  const topLineDistance = enabledWaves.includes('top') ? getLineDistance('top') * 0.01 : 0.01;
+  const middleLineDistance = enabledWaves.includes('middle') ? getLineDistance('middle') * 0.01 : 0.01;
+  const bottomLineDistance = enabledWaves.includes('bottom') ? getLineDistance('bottom') * 0.01 : 0.01;
+  useEffect(() => {
+    const container = containerRef.current;
+    if (!container) return;
+    let active = true;
+    const scene = new Scene();
+    const camera = new OrthographicCamera(-1, 1, 1, -1, 0, 1);
+    camera.position.z = 1;
+    const renderer = new WebGLRenderer({ antialias: true, alpha: false });
+    renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
+    renderer.domElement.style.width = '100%';
+    renderer.domElement.style.height = '100%';
+    container.appendChild(renderer.domElement);
+    const uniforms = {
+      iTime: { value: 0 },
+      iResolution: { value: new Vector3(1, 1, 1) },
+      animationSpeed: { value: animationSpeed },
+      enableTop: { value: enabledWaves.includes('top') },
+      enableMiddle: { value: enabledWaves.includes('middle') },
+      enableBottom: { value: enabledWaves.includes('bottom') },
+      topLineCount: { value: topLineCount },
+      middleLineCount: { value: middleLineCount },
+      bottomLineCount: { value: bottomLineCount },
+      topLineDistance: { value: topLineDistance },
+      middleLineDistance: { value: middleLineDistance },
+      bottomLineDistance: { value: bottomLineDistance },
+      topWavePosition: {
+        value: new Vector3(topWavePosition?.x ?? 10.0, topWavePosition?.y ?? 0.5, topWavePosition?.rotate ?? -0.4)
+      },
+      middleWavePosition: {
+        value: new Vector3(
+          middleWavePosition?.x ?? 5.0,
+          middleWavePosition?.y ?? 0.0,
+          middleWavePosition?.rotate ?? 0.2
+        )
+      },
+      bottomWavePosition: {
+        value: new Vector3(
+          bottomWavePosition?.x ?? 2.0,
+          bottomWavePosition?.y ?? -0.7,
+          bottomWavePosition?.rotate ?? 0.4
+        )
+      },
+      iMouse: { value: new Vector2(-1000, -1000) },
+      interactive: { value: interactive },
+      bendRadius: { value: bendRadius },
+      bendStrength: { value: bendStrength },
+      bendInfluence: { value: 0 },
+      parallax: { value: parallax },
+      parallaxStrength: { value: parallaxStrength },
+      parallaxOffset: { value: new Vector2(0, 0) },
+      lineGradient: {
+        value: Array.from({ length: MAX_GRADIENT_STOPS }, () => new Vector3(1, 1, 1))
+      },
+      lineGradientCount: { value: 0 }
+    };
+    if (linesGradient && linesGradient.length > 0) {
+      const stops = linesGradient.slice(0, MAX_GRADIENT_STOPS);
+      uniforms.lineGradientCount.value = stops.length;
+      stops.forEach((hex, i) => {
+        const color = hexToVec3(hex);
+        uniforms.lineGradient.value[i].set(color.x, color.y, color.z);
+      });
+    }
+    const material = new ShaderMaterial({
+      uniforms,
+      vertexShader,
+      fragmentShader
+    });
+    const geometry = new PlaneGeometry(2, 2);
+    const mesh = new Mesh(geometry, material);
+    scene.add(mesh);
+    const clock = new Clock();
+    const setSize = () => {
+      if (!active) return;
+      const width = container.clientWidth || 1;
+      const height = container.clientHeight || 1;
+      renderer.setSize(width, height, false);
+      const canvasWidth = renderer.domElement.width;
+      const canvasHeight = renderer.domElement.height;
+      uniforms.iResolution.value.set(canvasWidth, canvasHeight, 1);
+    };
+    setSize();
+    const ro =
+      typeof ResizeObserver !== 'undefined'
+        ? new ResizeObserver(() => {
+            if (!active) return;
+            setSize();
+          })
+        : null;
+    if (ro) ro.observe(container);
+    const handlePointerMove = event => {
+      const rect = renderer.domElement.getBoundingClientRect();
+      const x = event.clientX - rect.left;
+      const y = event.clientY - rect.top;
+      const dpr = renderer.getPixelRatio();
+      targetMouseRef.current.set(x * dpr, (rect.height - y) * dpr);
+      targetInfluenceRef.current = 1.0;
+      if (parallax) {
+        const centerX = rect.width / 2;
+        const centerY = rect.height / 2;
+        const offsetX = (x - centerX) / rect.width;
+        const offsetY = -(y - centerY) / rect.height;
+        targetParallaxRef.current.set(offsetX * parallaxStrength, offsetY * parallaxStrength);
+      }
+    };
+    const handlePointerLeave = () => {
+      targetInfluenceRef.current = 0.0;
+    };
+    if (interactive) {
+      renderer.domElement.addEventListener('pointermove', handlePointerMove);
+      renderer.domElement.addEventListener('pointerleave', handlePointerLeave);
+    }
+    let raf = 0;
+    const renderLoop = () => {
+      if (!active) return;
+      uniforms.iTime.value = clock.getElapsedTime();
+      if (interactive) {
+        currentMouseRef.current.lerp(targetMouseRef.current, mouseDamping);
+        uniforms.iMouse.value.copy(currentMouseRef.current);
+        currentInfluenceRef.current += (targetInfluenceRef.current - currentInfluenceRef.current) * mouseDamping;
+        uniforms.bendInfluence.value = currentInfluenceRef.current;
+      }
+      if (parallax) {
+        currentParallaxRef.current.lerp(targetParallaxRef.current, mouseDamping);
+        uniforms.parallaxOffset.value.copy(currentParallaxRef.current);
+      }
+      renderer.render(scene, camera);
+      raf = requestAnimationFrame(renderLoop);
+    };
+    renderLoop();
+    return () => {
+      active = false;
+      cancelAnimationFrame(raf);
+      if (ro) ro.disconnect();
+      if (interactive) {
+        renderer.domElement.removeEventListener('pointermove', handlePointerMove);
+        renderer.domElement.removeEventListener('pointerleave', handlePointerLeave);
+      }
+      geometry.dispose();
+      material.dispose();
+      renderer.dispose();
+      renderer.forceContextLoss();
+      if (renderer.domElement.parentElement) {
+        renderer.domElement.parentElement.removeChild(renderer.domElement);
+      }
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [
+    linesGradient,
+    enabledWaves,
+    lineCount,
+    lineDistance,
+    topWavePosition,
+    middleWavePosition,
+    bottomWavePosition,
+    animationSpeed,
+    interactive,
+    bendRadius,
+    bendStrength,
+    mouseDamping,
+    parallax,
+    parallaxStrength
+  ]);
+  return (
+    <div
+      ref={containerRef}
+      className="floating-lines-container"
+      style={{
+        mixBlendMode: mixBlendMode
+      }}
+    />
+  );
+}
+```
+### Component CSS
+```css
+.floating-lines-container {
+  width: 100%;
+  height: 100%;
+  position: relative;
+  overflow: hidden;
+}
+```
+### Integration Instructions
+1. Install any listed dependencies.
+2. Copy the component source into the appropriate directory in the project.
+3. Import the CSS file alongside the component.
+4. Import and render the component using the usage example above as a starting point.
+5. Adjust props as needed for the specific use case — refer to the props table for all available options.
+
+
+
+
+## Integrate the <LineSidebar /> component from React Bits
+You are helping integrate an open-source React component into an existing application.
+### Component: LineSidebar
+### Variant: JavaScript + CSS
+---
+### Usage Example
+```jsx
+import LineSidebar from './LineSidebar';
+<LineSidebar
+  items={['Overview', 'Components', 'Animations', 'Backgrounds', 'Showcase']}
+  accentColor="#A855F7"
+  textColor="#c4c4c4"
+  markerColor="#6c6c6c"
+  showIndex
+  showMarker
+  proximityRadius={100}
+  maxShift={30}
+  falloff="smooth"
+  markerLength={60}
+  markerGap={0}
+  tickScale={0.5}
+  scaleTick
+  itemGap={20}
+  fontSize={1.1}
+  smoothing={100}
+  defaultActive={0}
+  onItemClick={(index, label) => console.log(index, label)}
+/>
+```
+### Props
+| Prop | Type | Default | Description |
+|------|------|---------|-------------|
+| items | string[] | [...] | Labels rendered as the list of sidebar entries. |
+| accentColor | string | "#A855F7" | Color items and markers shift toward as the cursor gets close. |
+| textColor | string | "#c4c4c4" | Resting color of the item labels. |
+| markerColor | string | "#6c6c6c" | Resting color of the leading marker lines. |
+| showIndex | boolean | true | Show the zero-padded index before each label. |
+| showMarker | boolean | true | Show the marker lines (and short ticks) beside each item. |
+| proximityRadius | number | 100 | Vertical distance in pixels within which the cursor influences an item. |
+| maxShift | number | 30 | Maximum horizontal shift in pixels the label slides at full proximity. |
+| falloff | "linear" | "smooth" | "sharp" | "smooth" | Curve mapping cursor distance to the proximity effect. |
+| markerLength | number | 60 | Length in pixels of the marker line; the in-between ticks scale from this too. |
+| markerGap | number | 0 | Gap in pixels between the labels and the markers. |
+| tickScale | number | 0.5 | Length of the in-between ticks as a fraction of markerLength. |
+| scaleTick | boolean | true | When true, the in-between ticks also grow with cursor proximity. |
+| itemGap | number | 20 | Vertical gap between items in pixels. |
+| fontSize | number | 1.1 | Font size of the labels in rem. |
+| smoothing | number | 100 | Transition duration in milliseconds for the proximity response. |
+| defaultActive | number | null | null | Index of the item selected on mount. |
+| onItemClick | (index, label) => void | - | Called when an item is clicked; the clicked item also becomes active. |
+| className | string | "" | Additional CSS classes for the outer wrapper. |
+### Full Component Source
+```jsx
+import { useRef, useState, useCallback, useEffect } from 'react';
+import './LineSidebar.css';
+const FALLOFF_CURVES = {
+  linear: p => p,
+  smooth: p => p * p * (3 - 2 * p),
+  sharp: p => p * p * p
+};
+const DEFAULT_ITEMS = [
+  'Overview',
+  'Components',
+  'Animations',
+  'Backgrounds',
+  'Showcase',
+  'Playground',
+  'Templates',
+  'Changelog',
+  'Community',
+  'Resources',
+  'Documentation',
+  'Support'
+];
+const LineSidebar = ({
+  items = DEFAULT_ITEMS,
+  accentColor = '#A855F7',
+  textColor = '#c4c4c4',
+  markerColor = '#6c6c6c',
+  showIndex = true,
+  showMarker = true,
+  proximityRadius = 100,
+  maxShift = 30,
+  falloff = 'smooth',
+  markerLength = 60,
+  markerGap = 0,
+  tickScale = 0.5,
+  scaleTick = true,
+  itemGap = 20,
+  fontSize = 1.1,
+  smoothing = 100,
+  defaultActive = null,
+  onItemClick,
+  className = ''
+}) => {
+  const listRef = useRef(null);
+  const itemRefs = useRef([]);
+  const targetsRef = useRef([]);
+  const currentRef = useRef([]);
+  const rafRef = useRef(null);
+  const lastRef = useRef(0);
+  const activeRef = useRef(defaultActive);
+  const smoothingRef = useRef(smoothing);
+  const [activeIndex, setActiveIndex] = useState(defaultActive);
+  activeRef.current = activeIndex;
+  smoothingRef.current = smoothing;
+  // Single rAF loop that eases every item's --effect toward its target using
+  // frame-rate independent exponential smoothing, so color, shift and scale
+  // all move together without staggering CSS transitions.
+  const runFrame = useCallback(now => {
+    const dt = Math.min((now - lastRef.current) / 1000, 0.05);
+    lastRef.current = now;
+    const tau = Math.max(smoothingRef.current, 1) / 1000;
+    const k = 1 - Math.exp(-dt / tau);
+    let moving = false;
+    const items = itemRefs.current;
+    for (let i = 0; i < items.length; i++) {
+      const el = items[i];
+      if (!el) continue;
+      const target = Math.max(targetsRef.current[i] || 0, activeRef.current === i ? 1 : 0);
+      const cur = currentRef.current[i] || 0;
+      const next = cur + (target - cur) * k;
+      const settled = Math.abs(target - next) < 0.0015;
+      const value = settled ? target : next;
+      currentRef.current[i] = value;
+      el.style.setProperty('--effect', value.toFixed(4));
+      if (!settled) moving = true;
+    }
+    rafRef.current = moving ? requestAnimationFrame(runFrame) : null;
+  }, []);
+  const startLoop = useCallback(() => {
+    if (rafRef.current != null) {
+      cancelAnimationFrame(rafRef.current);
+    }
+    lastRef.current = performance.now();
+    rafRef.current = requestAnimationFrame(runFrame);
+  }, [runFrame]);
+  const handlePointerMove = useCallback(
+    e => {
+      const list = listRef.current;
+      if (!list) return;
+      const rect = list.getBoundingClientRect();
+      const pointerY = e.clientY - rect.top;
+      const ease = FALLOFF_CURVES[falloff] ?? FALLOFF_CURVES.linear;
+      const items = itemRefs.current;
+      for (let i = 0; i < items.length; i++) {
+        const el = items[i];
+        if (!el) continue;
+        const center = el.offsetTop + el.offsetHeight / 2;
+        const distance = Math.abs(pointerY - center);
+        targetsRef.current[i] = ease(Math.max(0, 1 - distance / proximityRadius));
+      }
+      startLoop();
+    },
+    [falloff, proximityRadius, startLoop]
+  );
+  const handlePointerLeave = useCallback(() => {
+    targetsRef.current = targetsRef.current.map(() => 0);
+    startLoop();
+  }, [startLoop]);
+  const handleClick = useCallback(
+    (index, label) => {
+      setActiveIndex(index);
+      onItemClick?.(index, label);
+    },
+    [onItemClick]
+  );
+  useEffect(() => {
+    startLoop();
+  }, [activeIndex, startLoop]);
+  useEffect(
+    () => () => {
+      if (rafRef.current != null) cancelAnimationFrame(rafRef.current);
+      rafRef.current = null;
+    },
+    []
+  );
+  return (
+    <nav
+      className={`line-sidebar${showMarker ? ' line-sidebar--markers' : ''}${scaleTick ? ' line-sidebar--scale-tick' : ''}${className ? ` ${className}` : ''}`}
+      style={{
+        '--accent-color': accentColor,
+        '--text-color': textColor,
+        '--marker-color': markerColor,
+        '--marker-length': `${markerLength}px`,
+        '--marker-gap': `${markerGap}px`,
+        '--tick-scale': tickScale,
+        '--max-shift': `${maxShift}px`,
+        '--item-gap': `${itemGap}px`,
+        '--font-size': `${fontSize}rem`,
+        '--smoothing': `${smoothing}ms`
+      }}
+    >
+      <ul ref={listRef} className="line-sidebar__list" onPointerMove={handlePointerMove} onPointerLeave={handlePointerLeave}>
+        {items.map((label, index) => (
+          <li
+            key={`${label}-${index}`}
+            ref={el => {
+              itemRefs.current[index] = el;
+            }}
+            className="line-sidebar__item"
+            aria-current={activeIndex === index ? 'true' : undefined}
+            onClick={() => handleClick(index, label)}
+          >
+            {showMarker && <span className="line-sidebar__marker" aria-hidden="true" />}
+            <span className="line-sidebar__label">
+              {showIndex && <span className="line-sidebar__index">{String(index + 1).padStart(2, '0')}</span>}
+              <span className="line-sidebar__text">{label}</span>
+            </span>
+          </li>
+        ))}
+      </ul>
+    </nav>
+  );
+};
+export default LineSidebar;
+```
+### Component CSS
+```css
+.line-sidebar {
+  --accent-color: #a855f7;
+  --text-color: #c4c4c4;
+  --marker-color: #6c6c6c;
+  --marker-length: 60px;
+  --marker-gap: 0px;
+  --tick-scale: 0.5;
+  --max-shift: 30px;
+  --item-gap: 20px;
+  --font-size: 1.1rem;
+  --smoothing: 100ms;
+  position: relative;
+  display: flex;
+  justify-content: flex-start;
+}
+.line-sidebar--markers {
+  padding-left: calc(var(--marker-length) + var(--marker-gap));
+}
+.line-sidebar__list {
+  list-style: none;
+  margin: 0;
+  padding: 1rem 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--item-gap);
+}
+/* --effect (0..1) is driven per item by a rAF lerp in JS, so every derived
+   property below reads the same continuously-animating value and stays in
+   step, with no CSS transitions to stagger. */
+.line-sidebar__item {
+  position: relative;
+  cursor: pointer;
+}
+/* Widen the pointer target so items react a touch before the cursor arrives */
+.line-sidebar__item::before {
+  content: '';
+  position: absolute;
+  inset: -6px -48px;
+}
+.line-sidebar__label {
+  position: relative;
+  display: inline-flex;
+  align-items: baseline;
+  font-size: var(--font-size);
+  line-height: 1.2;
+  color: color-mix(in srgb, var(--accent-color) calc(var(--effect, 0) * 100%), var(--text-color));
+  transform: translateX(calc(var(--effect, 0) * var(--max-shift)));
+}
+.line-sidebar__index {
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  margin-right: 0.6rem;
+  font-size: 0.85em;
+  opacity: calc(0.55 + var(--effect, 0) * 0.45);
+}
+.line-sidebar__marker {
+  position: absolute;
+  top: 50%;
+  left: calc(-1 * var(--marker-length) - var(--marker-gap));
+  height: 1px;
+  width: var(--marker-length);
+  background-color: color-mix(in srgb, var(--accent-color) calc(var(--effect, 0) * 100%), var(--marker-color));
+  transform-origin: left center;
+  transform: translateY(-50%) scaleX(calc(0.7 + var(--effect, 0) * 0.5));
+}
+/* Short static tick centered in the gap between two menu items */
+.line-sidebar--markers .line-sidebar__item:not(:last-child)::after {
+  content: '';
+  position: absolute;
+  top: calc(100% + var(--item-gap) / 2);
+  left: calc(-1 * var(--marker-length) - var(--marker-gap));
+  height: 1px;
+  width: calc(var(--marker-length) * var(--tick-scale));
+  background-color: var(--marker-color);
+  opacity: 0.5;
+  transform: translateY(-50%);
+}
+/* When enabled, the in-between ticks grow with cursor proximity too */
+.line-sidebar--scale-tick .line-sidebar__item:not(:last-child)::after {
+  transform-origin: left center;
+  transform: translateY(-50%) scaleX(calc(0.7 + var(--effect, 0) * 0.6));
+}
+```
+### Integration Instructions
+1. Install any listed dependencies.
+2. Copy the component source into the appropriate directory in the project.
+3. Import the CSS file alongside the component.
+4. Import and render the component using the usage example above as a starting point.
+5. Adjust props as needed for the specific use case — refer to the props table for all available options.
+
+
+## Integrate the <StarBorder /> component from React Bits
+You are helping integrate an open-source React component into an existing application.
+### Component: StarBorder
+### Variant: JavaScript + CSS
+---
+### Usage Example
+```jsx
+import StarBorder from './StarBorder'
+  
+<StarBorder
+  as="button"
+  className="custom-class"
+  color="cyan"
+  speed="5s"
+>
+  // content
+</StarBorder>
+```
+### Props
+| Prop | Type | Default | Description |
+|------|------|---------|-------------|
+| as | string | button | Allows specifying the type of the parent component to be rendered. |
+| className | string | - | Allows adding custom classes to the component. |
+| color | string | white | Changes the main color of the border (fades to transparent) |
+| speed | string | 6s | Changes the speed of the animation. |
+| thickness | number | 3 | Controls the thickness of the star border effect. |
+### Full Component Source
+```jsx
+import './StarBorder.css';
+const StarBorder = ({
+  as: Component = 'button',
+  className = '',
+  color = 'white',
+  speed = '6s',
+  thickness = 1,
+  children,
+  ...rest
+}) => {
+  return (
+    <Component
+      className={`star-border-container ${className}`}
+      style={{
+        padding: `${thickness}px 0`,
+        ...rest.style
+      }}
+      {...rest}
+    >
+      <div
+        className="border-gradient-bottom"
+        style={{
+          background: `radial-gradient(circle, ${color}, transparent 10%)`,
+          animationDuration: speed
+        }}
+      ></div>
+      <div
+        className="border-gradient-top"
+        style={{
+          background: `radial-gradient(circle, ${color}, transparent 10%)`,
+          animationDuration: speed
+        }}
+      ></div>
+      <div className="inner-content">{children}</div>
+    </Component>
+  );
+};
+export default StarBorder;
+```
+### Component CSS
+```css
+.star-border-container {
+  display: inline-block;
+  position: relative;
+  border-radius: 20px;
+  overflow: hidden;
+}
+.border-gradient-bottom {
+  position: absolute;
+  width: 300%;
+  height: 50%;
+  opacity: 0.7;
+  bottom: -12px;
+  right: -250%;
+  border-radius: 50%;
+  animation: star-movement-bottom linear infinite alternate;
+  z-index: 0;
+}
+.border-gradient-top {
+  position: absolute;
+  opacity: 0.7;
+  width: 300%;
+  height: 50%;
+  top: -12px;
+  left: -250%;
+  border-radius: 50%;
+  animation: star-movement-top linear infinite alternate;
+  z-index: 0;
+}
+.inner-content {
+  position: relative;
+  border: 1px solid #222;
+  background: #000;
+  color: white;
+  font-size: 16px;
+  text-align: center;
+  padding: 16px 26px;
+  border-radius: 20px;
+  z-index: 1;
+}
+@keyframes star-movement-bottom {
+  0% {
+    transform: translate(0%, 0%);
+    opacity: 1;
+  }
+  100% {
+    transform: translate(-100%, 0%);
+    opacity: 0;
+  }
+}
+@keyframes star-movement-top {
+  0% {
+    transform: translate(0%, 0%);
+    opacity: 1;
+  }
+  100% {
+    transform: translate(100%, 0%);
+    opacity: 0;
+  }
+}
+```
+### Integration Instructions
+1. Install any listed dependencies.
+2. Copy the component source into the appropriate directory in the project.
+3. Import the CSS file alongside the component.
+4. Import and render the component using the usage example above as a starting point.
+5. Adjust props as needed for the specific use case — refer to the props table for all available options.
+
+
+
+## Integrate the <GlassIcons /> component from React Bits
+You are helping integrate an open-source React component into an existing application.
+### Component: GlassIcons
+### Variant: JavaScript + CSS
+---
+### Usage Example
+```jsx
+import GlassIcons from './GlassIcons'
+// update with your own icons and colors
+const items = [
+  { icon: <FiFileText />, color: 'blue', label: 'Files' },
+  { icon: <FiBook />, color: 'purple', label: 'Books' },
+  { icon: <FiHeart />, color: 'red', label: 'Health' },
+  { icon: <FiCloud />, color: 'indigo', label: 'Weather' },
+  { icon: <FiEdit />, color: 'orange', label: 'Notes' },
+  { icon: <FiBarChart2 />, color: 'green', label: 'Stats' },
+];
+<div style={{ height: '600px', position: 'relative' }}>
+  <GlassIcons items={items} className="custom-class"/>
+</div>
+```
+### Props
+| Prop | Type | Default | Description |
+|------|------|---------|-------------|
+| items | GlassIconsItem[] | [] | Array of items to render. Each item should include: an icon (React.ReactElement), a color (string), a label (string), and an optional customClass (string). |
+| className | string | '' | Optional additional CSS class(es) to be added to the container. |
+### Full Component Source
+```jsx
+import './GlassIcons.css';
+const gradientMapping = {
+  blue: 'linear-gradient(hsl(223, 90%, 50%), hsl(208, 90%, 50%))',
+  purple: 'linear-gradient(hsl(283, 90%, 50%), hsl(268, 90%, 50%))',
+  red: 'linear-gradient(hsl(3, 90%, 50%), hsl(348, 90%, 50%))',
+  indigo: 'linear-gradient(hsl(253, 90%, 50%), hsl(238, 90%, 50%))',
+  orange: 'linear-gradient(hsl(43, 90%, 50%), hsl(28, 90%, 50%))',
+  green: 'linear-gradient(hsl(123, 90%, 40%), hsl(108, 90%, 40%))'
+};
+const GlassIcons = ({ items, className }) => {
+  const getBackgroundStyle = color => {
+    if (gradientMapping[color]) {
+      return { background: gradientMapping[color] };
+    }
+    return { background: color };
+  };
+  return (
+    <div className={`icon-btns ${className || ''}`}>
+      {items.map((item, index) => (
+        <button key={index} className={`icon-btn ${item.customClass || ''}`} aria-label={item.label} type="button">
+          <span className="icon-btn__back" style={getBackgroundStyle(item.color)}></span>
+          <span className="icon-btn__front">
+            <span className="icon-btn__icon" aria-hidden="true">
+              {item.icon}
+            </span>
+          </span>
+          <span className="icon-btn__label">{item.label}</span>
+        </button>
+      ))}
+    </div>
+  );
+};
+export default GlassIcons;
+```
+### Component CSS
+```css
+.icon-btns {
+  display: grid;
+  grid-gap: 5em;
+  grid-template-columns: repeat(2, 1fr);
+  margin: auto;
+  padding: 3em 0;
+  overflow: visible;
+}
+.icon-btn {
+  background-color: transparent;
+  outline: none;
+  position: relative;
+  width: 4.5em;
+  height: 4.5em;
+  perspective: 24em;
+  transform-style: preserve-3d;
+  -webkit-tap-highlight-color: transparent;
+  border: none;
+  cursor: pointer;
+}
+.icon-btn__back,
+.icon-btn__front,
+.icon-btn__label {
+  transition:
+    opacity 0.3s cubic-bezier(0.83, 0, 0.17, 1),
+    transform 0.3s cubic-bezier(0.83, 0, 0.17, 1);
+}
+.icon-btn__back,
+.icon-btn__front {
+  border-radius: 1.25em;
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+}
+.icon-btn__back {
+  box-shadow: 0.5em -0.5em 0.75em hsla(223, 10%, 10%, 0.15);
+  display: block;
+  transform: rotate(15deg);
+  transform-origin: 100% 100%;
+  will-change: transform;
+}
+.icon-btn__front {
+  background-color: hsla(0, 0%, 100%, 0.15);
+  box-shadow: 0 0 0 0.1em hsla(0, 0%, 100%, 0.3) inset;
+  backdrop-filter: blur(0.75em);
+  -webkit-backdrop-filter: blur(0.75em);
+  -moz-backdrop-filter: blur(0.75em);
+  display: flex;
+  transform-origin: 80% 50%;
+  will-change: transform;
+}
+.icon-btn__icon {
+  margin: auto;
+  width: 1.5em;
+  height: 1.5em;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.icon-btn__label {
+  font-size: 1em;
+  white-space: nowrap;
+  text-align: center;
+  line-height: 2;
+  opacity: 0;
+  position: absolute;
+  top: 100%;
+  right: 0;
+  left: 0;
+  transform: translateY(0);
+}
+.icon-btn:focus-visible .icon-btn__back,
+.icon-btn:hover .icon-btn__back {
+  transform: rotate(25deg) translate3d(-0.5em, -0.5em, 0.5em);
+}
+.icon-btn:focus-visible .icon-btn__front,
+.icon-btn:hover .icon-btn__front {
+  transform: translate3d(0, 0, 2em);
+}
+.icon-btn:focus-visible .icon-btn__label,
+.icon-btn:hover .icon-btn__label {
+  opacity: 1;
+  transform: translateY(20%);
+}
+@media (min-width: 768px) {
+  .icon-btns {
+    grid-template-columns: repeat(3, 1fr);
+  }
+}
+```
+### Integration Instructions
+1. Install any listed dependencies.
+2. Copy the component source into the appropriate directory in the project.
+3. Import the CSS file alongside the component.
+4. Import and render the component using the usage example above as a starting point.
+5. Adjust props as needed for the specific use case — refer to the props table for all available options.
+
+
+## Integrate the <Stepper /> component from React Bits
+You are helping integrate an open-source React component into an existing application.
+### Component: Stepper
+### Variant: JavaScript + CSS
+### Dependencies: motion
+---
+### Usage Example
+```jsx
+import Stepper, { Step } from './Stepper';
+  
+<Stepper
+  initialStep={1}
+  onStepChange={(step) => {
+    console.log(step);
+  }}
+  onFinalStepCompleted={() => console.log("All steps completed!")}
+  backButtonText="Previous"
+  nextButtonText="Next"
+>
+  <Step>
+    <h2>Welcome to the React Bits stepper!</h2>
+    <p>Check out the next step!</p>
+  </Step>
+  <Step>
+    <h2>Step 2</h2>
+    <img style={{ height: '100px', width: '100%', objectFit: 'cover', objectPosition: 'center -70px', borderRadius: '15px', marginTop: '1em' }} src="https://www.purrfectcatgifts.co.uk/cdn/shop/collections/Funny_Cat_Cards_640x640.png?v=1663150894" />
+    <p>Custom step content!</p>
+  </Step>
+  <Step>
+    <h2>How about an input?</h2>
+    <input value={name} onChange={(e) => setName(e.target.value)} placeholder="Your name?" />
+  </Step>
+  <Step>
+    <h2>Final Step</h2>
+    <p>You made it!</p>
+  </Step>
+</Stepper>
+```
+### Props
+| Prop | Type | Default | Description |
+|------|------|---------|-------------|
+| children | ReactNode | — | The Step components (or any custom content) rendered inside the stepper. |
+| initialStep | number | 1 | The first step to display when the stepper is initialized. |
+| onStepChange | (step: number) => void | () => {} | Callback fired whenever the step changes. |
+| onFinalStepCompleted | () => void | () => {} | Callback fired when the stepper completes its final step. |
+| stepCircleContainerClassName | string | — | Custom class name for the container holding the step indicators. |
+| stepContainerClassName | string | — | Custom class name for the row holding the step circles/connectors. |
+| contentClassName | string | — | Custom class name for the step’s main content container. |
+| footerClassName | string | — | Custom class name for the footer area containing navigation buttons. |
+| backButtonProps | object | {} | Extra props passed to the Back button. |
+| nextButtonProps | object | {} | Extra props passed to the Next/Complete button. |
+| backButtonText | string | "Back" | Text for the Back button. |
+| nextButtonText | string | "Continue" | Text for the Next button when not on the last step. |
+| disableStepIndicators | boolean | false | Disables click interaction on step indicators. |
+| renderStepIndicator | {} | undefined | Renders a custom step indicator. |
+### Full Component Source
+```jsx
+import React, { useState, Children, useRef, useLayoutEffect } from 'react';
+import { motion, AnimatePresence } from 'motion/react';
+import './Stepper.css';
+export default function Stepper({
+  children,
+  initialStep = 1,
+  onStepChange = () => {},
+  onFinalStepCompleted = () => {},
+  stepCircleContainerClassName = '',
+  stepContainerClassName = '',
+  contentClassName = '',
+  footerClassName = '',
+  backButtonProps = {},
+  nextButtonProps = {},
+  backButtonText = 'Back',
+  nextButtonText = 'Continue',
+  disableStepIndicators = false,
+  renderStepIndicator,
+  ...rest
+}) {
+  const [currentStep, setCurrentStep] = useState(initialStep);
+  const [direction, setDirection] = useState(0);
+  const stepsArray = Children.toArray(children);
+  const totalSteps = stepsArray.length;
+  const isCompleted = currentStep > totalSteps;
+  const isLastStep = currentStep === totalSteps;
+  const updateStep = newStep => {
+    setCurrentStep(newStep);
+    if (newStep > totalSteps) {
+      onFinalStepCompleted();
+    } else {
+      onStepChange(newStep);
+    }
+  };
+  const handleBack = () => {
+    if (currentStep > 1) {
+      setDirection(-1);
+      updateStep(currentStep - 1);
+    }
+  };
+  const handleNext = () => {
+    if (!isLastStep) {
+      setDirection(1);
+      updateStep(currentStep + 1);
+    }
+  };
+  const handleComplete = () => {
+    setDirection(1);
+    updateStep(totalSteps + 1);
+  };
+  return (
+    <div className="outer-container" {...rest}>
+      <div className={`step-circle-container ${stepCircleContainerClassName}`} style={{ border: '1px solid #222' }}>
+        <div className={`step-indicator-row ${stepContainerClassName}`}>
+          {stepsArray.map((_, index) => {
+            const stepNumber = index + 1;
+            const isNotLastStep = index < totalSteps - 1;
+            return (
+              <React.Fragment key={stepNumber}>
+                {renderStepIndicator ? (
+                  renderStepIndicator({
+                    step: stepNumber,
+                    currentStep,
+                    onStepClick: clicked => {
+                      setDirection(clicked > currentStep ? 1 : -1);
+                      updateStep(clicked);
+                    }
+                  })
+                ) : (
+                  <StepIndicator
+                    step={stepNumber}
+                    disableStepIndicators={disableStepIndicators}
+                    currentStep={currentStep}
+                    onClickStep={clicked => {
+                      setDirection(clicked > currentStep ? 1 : -1);
+                      updateStep(clicked);
+                    }}
+                  />
+                )}
+                {isNotLastStep && <StepConnector isComplete={currentStep > stepNumber} />}
+              </React.Fragment>
+            );
+          })}
+        </div>
+        <StepContentWrapper
+          isCompleted={isCompleted}
+          currentStep={currentStep}
+          direction={direction}
+          className={`step-content-default ${contentClassName}`}
+        >
+          {stepsArray[currentStep - 1]}
+        </StepContentWrapper>
+        {!isCompleted && (
+          <div className={`footer-container ${footerClassName}`}>
+            <div className={`footer-nav ${currentStep !== 1 ? 'spread' : 'end'}`}>
+              {currentStep !== 1 && (
+                <button
+                  onClick={handleBack}
+                  className={`back-button ${currentStep === 1 ? 'inactive' : ''}`}
+                  {...backButtonProps}
+                >
+                  {backButtonText}
+                </button>
+              )}
+              <button onClick={isLastStep ? handleComplete : handleNext} className="next-button" {...nextButtonProps}>
+                {isLastStep ? 'Complete' : nextButtonText}
+              </button>
+            </div>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+function StepContentWrapper({ isCompleted, currentStep, direction, children, className }) {
+  const [parentHeight, setParentHeight] = useState(0);
+  return (
+    <motion.div
+      className={className}
+      style={{ position: 'relative', overflow: 'hidden' }}
+      animate={{ height: isCompleted ? 0 : parentHeight }}
+      transition={{ type: 'spring', duration: 0.4 }}
+    >
+      <AnimatePresence initial={false} mode="sync" custom={direction}>
+        {!isCompleted && (
+          <SlideTransition key={currentStep} direction={direction} onHeightReady={h => setParentHeight(h)}>
+            {children}
+          </SlideTransition>
+        )}
+      </AnimatePresence>
+    </motion.div>
+  );
+}
+function SlideTransition({ children, direction, onHeightReady }) {
+  const containerRef = useRef(null);
+  useLayoutEffect(() => {
+    if (containerRef.current) onHeightReady(containerRef.current.offsetHeight);
+  }, [children, onHeightReady]);
+  return (
+    <motion.div
+      ref={containerRef}
+      custom={direction}
+      variants={stepVariants}
+      initial="enter"
+      animate="center"
+      exit="exit"
+      transition={{ duration: 0.4 }}
+      style={{ position: 'absolute', left: 0, right: 0, top: 0 }}
+    >
+      {children}
+    </motion.div>
+  );
+}
+const stepVariants = {
+  enter: dir => ({
+    x: dir >= 0 ? '-100%' : '100%',
+    opacity: 0
+  }),
+  center: {
+    x: '0%',
+    opacity: 1
+  },
+  exit: dir => ({
+    x: dir >= 0 ? '50%' : '-50%',
+    opacity: 0
+  })
+};
+export function Step({ children }) {
+  return <div className="step-default">{children}</div>;
+}
+function StepIndicator({ step, currentStep, onClickStep, disableStepIndicators }) {
+  const status = currentStep === step ? 'active' : currentStep < step ? 'inactive' : 'complete';
+  const handleClick = () => {
+    if (step !== currentStep && !disableStepIndicators) onClickStep(step);
+  };
+  return (
+    <motion.div onClick={handleClick} className="step-indicator" style={disableStepIndicators ? { pointerEvents: 'none', opacity: 0.5 } : {}} animate={status} initial={false}>
+      <motion.div
+        variants={{
+          inactive: { scale: 1, backgroundColor: '#222', color: '#a3a3a3' },
+          active: { scale: 1, backgroundColor: '#5227FF', color: '#5227FF' },
+          complete: { scale: 1, backgroundColor: '#5227FF', color: '#3b82f6' }
+        }}
+        transition={{ duration: 0.3 }}
+        className="step-indicator-inner"
+      >
+        {status === 'complete' ? (
+          <CheckIcon className="check-icon" />
+        ) : status === 'active' ? (
+          <div className="active-dot" />
+        ) : (
+          <span className="step-number">{step}</span>
+        )}
+      </motion.div>
+    </motion.div>
+  );
+}
+function StepConnector({ isComplete }) {
+  const lineVariants = {
+    incomplete: { width: 0, backgroundColor: 'transparent' },
+    complete: { width: '100%', backgroundColor: '#5227FF' }
+  };
+  return (
+    <div className="step-connector">
+      <motion.div
+        className="step-connector-inner"
+        variants={lineVariants}
+        initial={false}
+        animate={isComplete ? 'complete' : 'incomplete'}
+        transition={{ duration: 0.4 }}
+      />
+    </div>
+  );
+}
+function CheckIcon(props) {
+  return (
+    <svg {...props} fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24">
+      <motion.path
+        initial={{ pathLength: 0 }}
+        animate={{ pathLength: 1 }}
+        transition={{ delay: 0.1, type: 'tween', ease: 'easeOut', duration: 0.3 }}
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        d="M5 13l4 4L19 7"
+      />
+    </svg>
+  );
+}
+```
+### Component CSS
+```css
+.outer-container {
+  display: flex;
+  min-height: 100%;
+  flex: 1 1 0%;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 1rem;
+}
+@media (min-width: 640px) {
+  .outer-container {
+    aspect-ratio: 4 / 3;
+  }
+}
+@media (min-width: 768px) {
+  .outer-container {
+    aspect-ratio: 2 / 1;
+  }
+}
+.step-circle-container {
+  margin-left: auto;
+  margin-right: auto;
+  width: 100%;
+  max-width: 28rem;
+  border-radius: 2rem;
+  box-shadow:
+    0 20px 25px -5px rgba(0, 0, 0, 0.1),
+    0 10px 10px -5px rgba(0, 0, 0, 0.04);
+}
+.step-indicator-row {
+  display: flex;
+  width: 100%;
+  align-items: center;
+  padding: 2rem;
+}
+.step-content-default {
+  position: relative;
+  overflow: hidden;
+}
+.step-default {
+  padding-left: 2rem;
+  padding-right: 2rem;
+}
+.footer-container {
+  padding-left: 2rem;
+  padding-right: 2rem;
+  padding-bottom: 2rem;
+}
+.footer-nav {
+  margin-top: 2.5rem;
+  display: flex;
+}
+.footer-nav.spread {
+  justify-content: space-between;
+}
+.footer-nav.end {
+  justify-content: flex-end;
+}
+.back-button {
+  transition: all 350ms;
+  border-radius: 0.25rem;
+  padding: 0.25rem 0.5rem;
+  color: #a3a3a3;
+  cursor: pointer;
+}
+.back-button:hover {
+  color: #52525b;
+}
+.back-button.inactive {
+  pointer-events: none;
+  opacity: 0.5;
+  color: #a3a3a3;
+}
+.next-button {
+  transition: all 350ms;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 9999px;
+  background-color: #5227ff;
+  color: #fff;
+  font-weight: 500;
+  letter-spacing: -0.025em;
+  padding: 0.375rem 0.875rem;
+  cursor: pointer;
+}
+.next-button:hover {
+  background-color: #5227ff;
+}
+.next-button:active {
+  background-color: #5227ff;
+}
+.step-indicator {
+  position: relative;
+  cursor: pointer;
+  outline: none;
+}
+.step-indicator-inner {
+  display: flex;
+  height: 2rem;
+  width: 2rem;
+  align-items: center;
+  justify-content: center;
+  border-radius: 9999px;
+  font-weight: 600;
+}
+.active-dot {
+  height: 0.75rem;
+  width: 0.75rem;
+  border-radius: 9999px;
+  background-color: #fff;
+}
+.step-number {
+  font-size: 0.875rem;
+}
+.step-connector {
+  position: relative;
+  margin-left: 0.5rem;
+  margin-right: 0.5rem;
+  height: 0.125rem;
+  flex: 1;
+  overflow: hidden;
+  border-radius: 0.25rem;
+  background-color: #52525b;
+}
+.step-connector-inner {
+  position: absolute;
+  left: 0;
+  top: 0;
+  height: 100%;
+}
+.check-icon {
+  height: 1rem;
+  width: 1rem;
+  color: #fff;
+}
+```
+### Integration Instructions
+1. Install any listed dependencies.
+2. Copy the component source into the appropriate directory in the project.
+3. Import the CSS file alongside the component.
+4. Import and render the component using the usage example above as a starting point.
+5. Adjust props as needed for the specific use case — refer to the props table for all available options.

@@ -1,0 +1,237 @@
+Build this inside my **existing React + Vite project** without redesigning the current ZARAKI AI UI.
+
+## IMPORTANT
+
+* Keep the existing **FloatingLines animated background** exactly as it is.
+* Do **NOT** replace my current layout, login page, sidebar, or Supabase integration.
+* Only **add the React Bits components properly** in separate files and connect them to the existing page.
+
+---
+
+# Install Dependencies
+
+```bash
+npm install three motion react-icons @supabase/supabase-js
+```
+
+---
+
+# Create These Files
+
+```
+src/components/
+  FloatingLines.jsx
+  FloatingLines.css
+  LineSidebar.jsx
+  LineSidebar.css
+  StarBorder.jsx
+  StarBorder.css
+  GlassIcons.jsx
+  GlassIcons.css
+  Stepper.jsx
+  Stepper.css
+  GooeyNav.jsx
+  GooeyNav.css
+```
+
+---
+
+# React Bits Components
+
+Use the **exact official React Bits source code** that I provided for:
+
+* FloatingLines
+* LineSidebar
+* StarBorder
+* GlassIcons
+* Stepper
+* GooeyNav
+
+Do not rewrite or simplify their internal logic. Keep the JSX and CSS exactly the same unless a small compatibility fix is required.
+
+---
+
+# Keep Existing Background
+
+My FloatingLines background is already working. **Do not touch it.**
+
+Add the remaining components on top of the existing content.
+
+---
+
+# Update Home Page
+
+Inside my existing `Home.jsx` (or main dashboard page), add this layout **without removing any current code**:
+
+```jsx
+import LineSidebar from '../components/LineSidebar';
+import StarBorder from '../components/StarBorder';
+import GlassIcons from '../components/GlassIcons';
+import Stepper, { Step } from '../components/Stepper';
+import GooeyNav from '../components/GooeyNav';
+
+import {
+  FiFileText,
+  FiBook,
+  FiHeart,
+  FiCloud,
+  FiEdit,
+  FiBarChart2
+} from 'react-icons/fi';
+
+const items = [
+  { icon: <FiFileText />, color: 'blue', label: 'Files' },
+  { icon: <FiBook />, color: 'purple', label: 'Books' },
+  { icon: <FiHeart />, color: 'red', label: 'Health' },
+  { icon: <FiCloud />, color: 'indigo', label: 'Weather' },
+  { icon: <FiEdit />, color: 'orange', label: 'Notes' },
+  { icon: <FiBarChart2 />, color: 'green', label: 'Stats' },
+];
+
+const navItems = [
+  { label: 'Terminal', href: '#' },
+  { label: 'Notes', href: '#' },
+  { label: 'History', href: '#' },
+  { label: 'Dashboard', href: '#' },
+  { label: 'Settings', href: '#' },
+];
+
+<div style={{ position: 'relative', zIndex: 1 }}>
+  <div style={{ display: 'flex', justifyContent: 'center', marginBottom: '32px' }}>
+    <GooeyNav items={navItems} initialActiveIndex={0} />
+  </div>
+
+  <div style={{ display: 'flex', gap: '40px', padding: '40px' }}>
+    <LineSidebar
+      items={['Overview', 'Providers', 'Notes', 'History', 'Settings']}
+      accentColor="#A855F7"
+    />
+
+    <div style={{ flex: 1, color: 'white' }}>
+      <h1 className="brand-title">ZARAKI AI</h1>
+
+      <div style={{ display: 'flex', gap: '16px', flexWrap: 'wrap', marginTop: '20px' }}>
+        <StarBorder as="button" color="cyan" speed="5s">
+          Launch Terminal
+        </StarBorder>
+
+        <StarBorder as="button" color="#A855F7" speed="7s">
+          Configure Providers
+        </StarBorder>
+      </div>
+
+      <div style={{ marginTop: '40px', height: '300px' }}>
+        <GlassIcons items={items} />
+      </div>
+
+      <div style={{ marginTop: '60px' }}>
+        <Stepper initialStep={1} backButtonText="Previous" nextButtonText="Next">
+          <Step>
+            <h2>Welcome</h2>
+            <p>This is the first step.</p>
+          </Step>
+
+          <Step>
+            <h2>Components</h2>
+            <p>All React Bits components are integrated.</p>
+          </Step>
+
+          <Step>
+            <h2>Done</h2>
+            <p>Everything works correctly.</p>
+          </Step>
+        </Stepper>
+      </div>
+    </div>
+  </div>
+</div>
+```
+
+---
+
+# Fonts and Styling
+
+Update `src/index.css` with:
+
+```css
+@import url('https://fonts.googleapis.com/css2?family=Orbitron:wght@500;700;800&family=Inter:wght@400;500;600;700&display=swap');
+
+* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+}
+
+html, body, #root {
+  width: 100%;
+  min-height: 100vh;
+  background: #020617;
+  color: #e2e8f0;
+  font-family: 'Inter', sans-serif;
+  overflow-x: hidden;
+}
+
+h1, h2, h3, .brand-title {
+  font-family: 'Orbitron', sans-serif;
+  letter-spacing: 0.04em;
+}
+
+.neon-button {
+  background: linear-gradient(135deg, rgba(96,165,250,0.18), rgba(34,211,238,0.14));
+  border: 1px solid rgba(96,165,250,0.35);
+  color: #e2e8f0;
+  padding: 12px 20px;
+  border-radius: 16px;
+  backdrop-filter: blur(12px);
+  transition: all 0.25s ease;
+  box-shadow: 0 0 18px rgba(34,211,238,0.08);
+}
+
+.neon-button:hover {
+  transform: translateY(-2px);
+  border-color: rgba(34,211,238,0.55);
+  box-shadow: 0 0 24px rgba(34,211,238,0.18);
+}
+```
+
+---
+
+# Supabase
+
+Keep the existing Supabase Auth and PostgreSQL setup. Do not remove or replace any authentication logic.
+
+Create `src/lib/supabase.js`:
+
+```jsx
+import { createClient } from '@supabase/supabase-js';
+
+const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
+const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
+
+export const supabase = createClient(supabaseUrl, supabaseAnonKey);
+```
+
+---
+
+# Do NOT Add
+
+* Firebase
+* Mixpanel
+* n8n
+* Automations
+* Analytics
+* TypeScript
+* Duplicate React roots
+
+---
+
+# Final Requirement
+
+After integration:
+
+* `npm install` should complete successfully
+* `npm run dev` should start without errors
+* Existing FloatingLines background must remain visible
+* Existing login page must still work
+* New React Bits components must appear on the dashboard page
+* The UI should look futuristic with Orbitron headings and neon glassmorphism buttons

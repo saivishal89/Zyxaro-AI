@@ -1,0 +1,90 @@
+The background (FloatingLines) is already working.
+
+Now add the remaining 4 components to the existing React page:
+
+1. LineSidebar
+2. StarBorder
+3. GlassIcons
+4. Stepper
+
+Do NOT change the existing FloatingLines background.
+
+### Create these files
+
+```
+src/components/LineSidebar.jsx
+src/components/LineSidebar.css
+src/components/StarBorder.jsx
+src/components/StarBorder.css
+src/components/GlassIcons.jsx
+src/components/GlassIcons.css
+src/components/Stepper.jsx
+src/components/Stepper.css
+```
+
+### Install missing dependencies
+
+```bash
+npm install motion react-icons
+```
+
+### Update the current page
+
+Add this layout **inside the existing page content**, keeping the background untouched:
+
+```jsx
+import LineSidebar from './components/LineSidebar';
+import StarBorder from './components/StarBorder';
+import GlassIcons from './components/GlassIcons';
+import Stepper, { Step } from './components/Stepper';
+import { FiFileText, FiBook, FiHeart, FiCloud, FiEdit, FiBarChart2 } from 'react-icons/fi';
+
+const items = [
+  { icon: <FiFileText />, color: 'blue', label: 'Files' },
+  { icon: <FiBook />, color: 'purple', label: 'Books' },
+  { icon: <FiHeart />, color: 'red', label: 'Health' },
+  { icon: <FiCloud />, color: 'indigo', label: 'Weather' },
+  { icon: <FiEdit />, color: 'orange', label: 'Notes' },
+  { icon: <FiBarChart2 />, color: 'green', label: 'Stats' },
+];
+
+<div style={{ display: 'flex', gap: '40px', padding: '40px', position: 'relative', zIndex: 1 }}>
+  <LineSidebar
+    items={['Overview', 'Components', 'Animations', 'Backgrounds', 'Showcase']}
+    accentColor="#A855F7"
+  />
+
+  <div style={{ flex: 1, color: 'white' }}>
+    <h1>React Bits Showcase</h1>
+
+    <StarBorder as="button" color="cyan" speed="5s">
+      Get Started
+    </StarBorder>
+
+    <div style={{ marginTop: '40px', height: '300px' }}>
+      <GlassIcons items={items} />
+    </div>
+
+    <div style={{ marginTop: '60px' }}>
+      <Stepper initialStep={1}>
+        <Step>
+          <h2>Welcome</h2>
+          <p>This is the first step.</p>
+        </Step>
+
+        <Step>
+          <h2>Components</h2>
+          <p>All React Bits components are integrated.</p>
+        </Step>
+
+        <Step>
+          <h2>Done</h2>
+          <p>Everything works correctly.</p>
+        </Step>
+      </Stepper>
+    </div>
+  </div>
+</div>
+```
+
+Do not remove any existing code related to FloatingLines.

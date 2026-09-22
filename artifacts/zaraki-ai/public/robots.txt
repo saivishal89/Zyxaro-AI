@@ -1,0 +1,10 @@
+# ZYXARO AI Robots.txt — Privacy & Search Crawling Directive
+# CEO: Chikoti Sai Vishal
+
+User-agent: *
+Allow: /
+Allow: /index.html
+Allow: /social-share-preview.png
+
+# Sitemaps
+Sitemap: https://zyxaro.ai/sitemap.xml

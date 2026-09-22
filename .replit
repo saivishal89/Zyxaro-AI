@@ -1,0 +1,17 @@
+modules = ["nodejs-24"]
+
+run = "pnpm --filter @workspace/zaraki-ai run dev"
+
+[deployment]
+run = ["pnpm", "--filter", "@workspace/zaraki-ai", "run", "dev"]
+
+[workflows]
+runButton = "Project"
+
+[[workflows.workflow]]
+name = "Project"
+author = "agent"
+
+[[workflows.workflow.tasks]]
+task = "shell.exec"
+args = "pnpm --filter @workspace/zaraki-ai run dev"

@@ -1,0 +1,418 @@
+# ZARAKI AI — Full Documentation
+
+> **Version:** 1.0 · **Stack:** React + Vite · **Storage:** 100% localStorage (no backend)
+
+---
+
+## Table of Contents
+
+1. [Overview](#overview)
+2. [Getting Started](#getting-started)
+3. [Interface Layout](#interface-layout)
+4. [Chat Features](#chat-features)
+5. [AI Providers](#ai-providers)
+6. [Image Generation](#image-generation)
+7. [File Attachments](#file-attachments)
+8. [Notes System](#notes-system)
+9. [Session Management](#session-management)
+10. [Document Export](#document-export)
+11. [Message Actions](#message-actions)
+12. [Voice Features](#voice-features)
+13. [Config Panel](#config-panel)
+14. [Data & Privacy](#data--privacy)
+15. [Header Controls](#header-controls)
+16. [Keyboard Shortcuts](#keyboard-shortcuts)
+17. [Technical Details](#technical-details)
+
+---
+
+## Overview
+
+**ZARAKI AI** is a private, local-first AI research assistant. It connects directly from your browser to any OpenAI-compatible API — your keys stay in your browser's localStorage and are never sent to any server other than the AI provider you choose.
+
+**Key principles:**
+- No account required
+- No data leaves your device (except to your chosen AI providers)
+- Works with 18 different AI providers simultaneously
+- All history, notes, and settings stored locally in your browser
+
+---
+
+## Getting Started
+
+1. Open the app — it launches in **Simulation Mode** by default (no API key needed to explore the UI)
+2. Click **⚙ Config** in the top-right header
+3. Select one or more AI providers using the provider buttons
+4. Paste your API key for each selected provider
+5. Click **Save Config**
+6. Start chatting — the simulation mode banner disappears once a real provider is active
+
+---
+
+## Interface Layout
+
+```
+┌─────────────────────────────────────────────────────┐
+│  ZARAKI Logo         [Export] [Config] [Burn All]   │  ← Header
+├──────────────────────────────────────────────────────┤
+│ ✦ SIMULATION MODE banner (hidden when live)          │
+├────────────┬────────────────────────────────────────┤
+│            │                                        │
+│  SIDEBAR   │          CHAT AREA                     │
+│            │                                        │
+│ [Notes]    │   Welcome screen / Messages            │
+│ [History]  │                                        │
+│            │                                        │
+│ + New Sess │                                        │
+│            │                                        │
+│ Session 1  ├────────────────────────────────────────┤
+│ Session 2  │  [+] [text input...] [🎤] [SEND ▶]    │
+└────────────┴────────────────────────────────────────┘
+```
+
+---
+
+## Chat Features
+
+### Sending a Message
+- Type in the input box at the bottom and press **Enter** or click **SEND ▶**
+- Press **Shift + Enter** to add a new line without sending
+- Messages auto-scroll to the latest reply
+
+### Topic Auto-Detection
+Every message is automatically classified into a research tag displayed on the AI reply:
+
+| Tag | Keywords detected |
+|-----|------------------|
+| SCIENCE | physics, chemistry, biology, quantum, DNA, space, galaxy |
+| TECH | AI, ML, software, code, programming, computer, cyber |
+| HISTORY | history, ancient, war, empire, century, revolution |
+| FINANCE | finance, stock, market, crypto, bitcoin, investment |
+| HEALTH | health, medical, medicine, disease, brain, treatment |
+| DATA | data, scraping, web, proxy, crawl, extract |
+| RESEARCH | everything else |
+
+### AI Response Style
+ZARAKI AI is configured with a strict system prompt:
+- Always leads with a **1-2 line TL;DR**
+- Uses **bullet points** and short paragraphs
+- **Bolds key terms**
+- Maximum 5-7 bullets per section
+- Concise, information-dense responses
+
+### Multi-Provider Parallel Calling
+If you enable multiple providers in Config, ZARAKI sends your message to **all of them simultaneously** and shows each response separately — great for comparing models side by side.
+
+---
+
+## AI Providers
+
+ZARAKI supports 18 providers out of the box:
+
+| Provider | Model (default) | Key prefix |
+|----------|----------------|------------|
+| **SIMULATION** | Built-in (no key) | — |
+| **⚡ FEATHERLESS** | Qwen/Qwen2.5-72B-Instruct | `rc_...` |
+| **OPENAI** | gpt-4o | `sk-...` |
+| **ANTHROPIC** | claude-3-5-sonnet-20241022 | `sk-ant-...` |
+| **DEEPSEEK** | deepseek-chat | `sk-...` |
+| **GROQ** | llama-3.3-70b-versatile | `gsk_...` |
+| **MISTRAL** | mistral-large-latest | from console.mistral.ai |
+| **OPENROUTER** | openai/gpt-4o | `sk-or-...` |
+| **GEMINI** | gemini-2.0-flash | `AIza...` |
+| **COHERE** | command-r-plus | from cohere.ai |
+| **TOGETHER AI** | Llama-3.3-70B-Instruct-Turbo | from together.xyz |
+| **PERPLEXITY** | llama-3.1-sonar-large-128k-online | `pplx-...` |
+| **XAI / GROK** | grok-3 | `xai-...` |
+| **BRIGHTDATA** | gpt-4o | from brightdata.com |
+| **ONLYFANS API** | default | from onlyfansapi.ai |
+| **🦀 OPENCLAW** | openclaw-pro | `oc-...` |
+| **⚡ NVIDIA NIM** | meta/llama-3.3-70b-instruct | `nvapi-...` |
+| **CUSTOM URL** | Your own model | Bearer token |
+
+### Custom Provider
+Select "CUSTOM URL" in Config to enter any OpenAI-compatible endpoint URL and model name — works with local Ollama, LM Studio, or any self-hosted API.
+
+### Error Handling
+- **401** → "Invalid API key" prompt
+- **429** → "Rate limit reached" prompt
+- **Network error** → Connection error message
+- Errors appear inline as red-styled messages in chat
+
+---
+
+## Image Generation
+
+Type `/image [your prompt]` in the chat to generate an image.
+
+**Example:**
+```
+/image a cyberpunk city at night with neon lights
+```
+
+- Powered by **Pollinations AI** — completely free, no API key required
+- Generates at **1024 × 1024** resolution
+- Random seed used each time for variety
+- Image appears inline in the chat
+- Works in both Simulation Mode and live provider mode
+
+---
+
+## File Attachments
+
+Click the **+** button in the input bar to open the attachment popup:
+
+| Button | Accepts | Behaviour |
+|--------|---------|-----------|
+| 📁 File | Any file | Reads as text or base64 |
+| 🖼️ Image | image/* | Attaches for context |
+| 📷 Camera | image/* (capture) | Opens device camera |
+| 📄 PDF | .pdf | Reads content |
+| 📝 Word | .doc, .docx, .txt | Reads text |
+| 📊 Excel | .xlsx, .xls, .csv | Reads data |
+| 📑 PPT | .ppt, .pptx | Reads structure |
+| 🔗 Drive | .json, .txt | Reads local JSON/text |
+| 💾 Export | — | Downloads full chat as JSON |
+
+**Notes:**
+- Text files (.txt, .md, .csv) are read as plain text
+- Other files are read as base64 data URLs
+- Maximum ~8,000 characters of file content sent per file
+- Multiple files can be attached per message
+- Attached file names are shown as chips above the input
+
+---
+
+## Notes System
+
+The sidebar **Notes** tab stores research snippets you want to keep.
+
+### Saving a Note
+- Hover over any AI message → click the **Note** button in the export row
+- The note is saved instantly and the sidebar switches to Notes view
+- Note title = first 45 characters of the message
+
+### Managing Notes
+- Click the **×** on any note card to delete it
+- Notes are stored permanently in localStorage until deleted or Burn All is used
+- Notes panel shows the date/time each note was saved
+
+---
+
+## Session Management
+
+The sidebar **History** tab shows all chat sessions.
+
+### Sessions
+- Up to **20 sessions** are stored (oldest removed when limit is reached)
+- Sessions auto-title from your first message (first 45 characters)
+- Click any session in the sidebar to switch to it
+- Click **×** on a session to delete it (a fresh session is created if all are deleted)
+
+### New Session
+- Click **+ New Session** at the top of the sidebar
+- Starts a fresh, empty chat with no history sent to the AI
+
+---
+
+## Document Export
+
+Every AI message has export buttons that appear on hover. You can export any response as:
+
+| Format | Output |
+|--------|--------|
+| **Note** | Saves to your Notes tab |
+| **PPT** | Downloads a .pptx PowerPoint presentation |
+| **DOC** | Downloads a .doc Word document |
+| **PDF** | Opens a print dialog for PDF saving |
+
+### How PPT Export Works
+- Parses markdown headings (`##`) into individual slides
+- Each `##` heading becomes a slide title
+- Bullet points (`-`) become slide content bullets
+- Dark blue theme matching ZARAKI's brand (`#03081A` background, `#60A5FA` titles)
+- Title slide added automatically with ZARAKI branding
+- Maximum 15 content slides
+
+### How DOC Export Works
+- Converts markdown to Word-compatible HTML
+- Styled with Calibri font, professional heading hierarchy
+- Includes "Generated by ZARAKI AI" footer
+- File opens in Microsoft Word or Google Docs
+
+### Global Export (Header)
+Click **⤴ Export** in the header to download **all your sessions and notes** as a single JSON file — use this to back up your data or transfer to another device.
+
+---
+
+## Message Actions
+
+Hover over any **AI response** to reveal action icons:
+
+| Icon | Action | Detail |
+|------|--------|--------|
+| ⧉ Copy | Copy text | Copies full raw text to clipboard |
+| ↗ Share | Share | Uses native share sheet on mobile; falls back to clipboard on desktop |
+| ▶ Read Aloud | Text-to-Speech | Reads response aloud; click again to stop. Strips markdown formatting before speaking. |
+| 👍 Thumbs Up | Like | Highlights green; click again to un-like |
+| 👎 Thumbs Down | Dislike | Highlights red; click again to un-dislike |
+| ↺ Retry | Regenerate | Removes this response and re-sends the previous user message |
+
+---
+
+## Voice Features
+
+### Voice Input (Mic Button 🎤)
+- Click the **🎤** button next to SEND in the input bar
+- Speak your question — it transcribes automatically
+- The mic turns red while listening
+- Transcribed text is inserted into the input box
+- Press SEND or Enter to send it
+- **Requires:** A browser that supports the Web Speech API (Chrome, Edge, Safari)
+
+### Read Aloud (TTS)
+- Click the ▶ icon on any AI message to hear it read aloud
+- Markdown symbols are stripped before speaking (no "hashtag" or "asterisk" in audio)
+- Click again to stop mid-playback
+- **Requires:** A browser with SpeechSynthesis API support (all modern browsers)
+
+---
+
+## Config Panel
+
+Click **⚙ Config** to open the settings panel.
+
+### Provider Selection
+- Toggle providers on/off using the provider buttons
+- A provider is only active if it's toggled ON and has an API key entered
+
+### API Keys
+- Enter your key for each provider in its field
+- Click the eye icon (👁) to show/hide the key
+- Keys are saved to localStorage with the prefix `zrk_k_<provider>`
+- Clearing a key and saving removes it from storage
+
+### Custom Provider Fields
+When CUSTOM URL is selected, two extra fields appear:
+- **Endpoint URL** — full URL to your chat completions endpoint
+- **Model name** — the model identifier to send in the request body
+
+### Saving Config
+- Click **Save Config** to apply all changes
+- A toast confirms which providers are now active
+- Any provider toggled ON but missing a key is automatically dropped
+
+---
+
+## Data & Privacy
+
+| What | Where stored | Sent to |
+|------|-------------|---------|
+| API keys | `localStorage` (`zrk_k_*`) | Your chosen AI provider only |
+| Chat sessions | `localStorage` (`zrk_sessions`) | Nobody |
+| Notes | `localStorage` (`zrk_notes`) | Nobody |
+| Provider selection | `localStorage` (`zrk_provs`) | Nobody |
+| Custom endpoint | `localStorage` (`zrk_custep`) | Nobody |
+
+**ZARAKI has no backend.** There is no server that receives your messages, keys, or history. Everything runs in your browser.
+
+### localStorage Keys Reference
+
+| Key | Contents |
+|-----|----------|
+| `zrk_sessions` | Array of all chat sessions + messages |
+| `zrk_notes` | Array of saved notes |
+| `zrk_provs` | Array of active provider IDs |
+| `zrk_k_openai` | OpenAI API key |
+| `zrk_k_groq` | Groq API key |
+| `zrk_k_anthropic` | Anthropic API key |
+| `zrk_k_deepseek` | DeepSeek API key |
+| `zrk_k_mistral` | Mistral API key |
+| `zrk_k_openrouter` | OpenRouter API key |
+| `zrk_k_gemini` | Gemini API key |
+| `zrk_k_cohere` | Cohere API key |
+| `zrk_k_together` | Together AI key |
+| `zrk_k_perplexity` | Perplexity key |
+| `zrk_k_xai` | xAI / Grok key |
+| `zrk_k_nvidia` | NVIDIA NIM key |
+| `zrk_k_featherless` | Featherless key |
+| `zrk_k_brightdata` | BrightData key |
+| `zrk_k_openclaw` | OpenClaw key |
+| `zrk_k_onlyfans` | OnlyFans API key |
+| `zrk_k_custom` | Custom provider key |
+| `zrk_custep` | Custom endpoint URL |
+| `zrk_custmod` | Custom model name |
+
+---
+
+## Header Controls
+
+| Button | Action |
+|--------|--------|
+| **⤴ Export** | Download all sessions + notes as a `.json` backup file |
+| **⚙ Config** | Open the provider/API key settings panel |
+| **🔥 Burn All** | First click asks for confirmation; second click wipes all `zrk_*` localStorage data and reloads the page |
+
+---
+
+## Keyboard Shortcuts
+
+| Key | Action |
+|-----|--------|
+| `Enter` | Send message |
+| `Shift + Enter` | New line in input |
+
+---
+
+## Technical Details
+
+### Stack
+- **Framework:** React 18 + Vite
+- **Language:** TypeScript (strict mode)
+- **Styling:** Inline styles + CSS-in-JS (`<style>` injection)
+- **Markdown:** `marked` v4.3.0 (synchronous parse, GFM + line breaks)
+- **PPT Export:** `pptxgenjs`
+- **Fonts:** Orbitron (titles), Exo 2 (body) via Google Fonts
+- **Background:** Animated HTML5 Canvas — 280 twinkling stars + 5 drifting nebulae
+- **Thinking animation:** Canvas-based atomic particle simulation (nucleus + electron shells)
+
+### AI API Format
+All providers (except Anthropic's native format) use the OpenAI Chat Completions format:
+
+```json
+POST <endpoint>
+Authorization: Bearer <key>
+Content-Type: application/json
+
+{
+  "model": "<model>",
+  "messages": [
+    { "role": "system", "content": "..." },
+    { "role": "user", "content": "..." },
+    { "role": "assistant", "content": "..." }
+  ],
+  "temperature": 0.7,
+  "max_tokens": 2048,
+  "stream": false
+}
+```
+
+### Image Generation API
+```
+GET https://image.pollinations.ai/prompt/<encoded-prompt>
+  ?width=1024&height=1024&nologo=true&seed=<random>
+```
+No authentication required.
+
+### Build & Dev
+```bash
+# Start development server
+pnpm --filter @workspace/zaraki-research run dev
+
+# Type-check
+pnpm --filter @workspace/zaraki-research run typecheck
+```
+
+---
+
+*Generated for ZARAKI AI · July 2026*

@@ -1,0 +1,75 @@
+.gooey-nav {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 999px;
+  padding: 4px;
+  backdrop-filter: blur(12px);
+  overflow: visible;
+}
+
+.gooey-nav-canvas {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  z-index: 10;
+  border-radius: 999px;
+  overflow: hidden;
+}
+
+/* The gooey filter layer — behind items but above background */
+.gooey-nav-layer {
+  position: absolute;
+  inset: 4px;
+  filter: url(#gooey-filter);
+  border-radius: 999px;
+  overflow: hidden;
+  pointer-events: none;
+  z-index: 1;
+}
+
+.gooey-nav-indicator {
+  position: absolute;
+  top: 0;
+  height: 100%;
+  background: linear-gradient(135deg, #2563EB, #3B82F6);
+  border-radius: 999px;
+  transition: left 0.35s cubic-bezier(0.34, 1.56, 0.64, 1),
+              width 0.35s cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+
+/* Items row */
+.gooey-nav-items {
+  position: relative;
+  z-index: 2;
+  display: flex;
+  align-items: center;
+  gap: 2px;
+}
+
+.gooey-nav-item {
+  position: relative;
+  padding: 6px 16px;
+  border-radius: 999px;
+  border: none;
+  background: transparent;
+  font-size: 0.78rem;
+  font-weight: 600;
+  font-family: 'Exo 2', sans-serif;
+  letter-spacing: 0.04em;
+  color: #64748B;
+  cursor: pointer;
+  transition: color 0.2s;
+  white-space: nowrap;
+  z-index: 2;
+}
+
+.gooey-nav-item.active {
+  color: #fff;
+}
+
+.gooey-nav-item:not(.active):hover {
+  color: #94A3B8;
+}
