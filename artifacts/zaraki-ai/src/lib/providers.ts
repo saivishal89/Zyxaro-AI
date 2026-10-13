@@ -164,8 +164,16 @@ export async function callProvider(
   // the authenticated /api/v1/chat endpoint. Otherwise fall back to the free
   // unauthenticated /api/ai/chat endpoint for backward compatibility.
   if (providerId === 'zaraki' || providerId === 'omniroute') {
-    const zarakiKey = config.apiKey || '';
-    const hasZarakiKey = /^zk_(live|test)_[a-f0-9]{8}_/.test(zarakiKey.trim());
+    let zarakiKey = (config.apiKey || '').trim();
+    if (!zarakiKey && typeof window !== 'undefined') {
+      try {
+        const stored = localStorage.getItem('zrk_k_zaraki') || localStorage.getItem('zyx_k_zaraki') || '';
+        zarakiKey = (stored.startsWith('"') ? JSON.parse(stored) : stored).trim();
+      } catch {
+        // ignore JSON parse error
+      }
+    }
+    const hasZarakiKey = /^zk_(live|test)_/i.test(zarakiKey);
 
     try {
       let resp: Response;

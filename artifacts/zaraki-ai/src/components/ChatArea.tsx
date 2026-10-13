@@ -215,7 +215,7 @@ export function ChatArea() {
     }
 
     const primaryProvider = activeProviders[0] || 'simulation';
-    const key = apiKeys[primaryProvider] || '';
+    const key = apiKeys[primaryProvider] || (primaryProvider === 'zaraki' || primaryProvider === 'omniroute' ? apiKeys['zaraki'] || apiKeys['omniroute'] : '') || '';
 
     setIsGenerating(true);
 
