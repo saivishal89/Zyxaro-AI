@@ -209,6 +209,14 @@ class GatewayRouter:
             except Exception as e:
                 logger.warning(f"OmniRoute live AI failed: {e}")
 
+        # 2b. Try Groq for real AI fallback if registered
+        if "groq" in self.adapters:
+            try:
+                logger.info(f"Gateway routing to Groq for live AI (model: {target_model})")
+                return await self.adapters["groq"].generate_chat(messages=messages, model=target_model, **kwargs)
+            except Exception as e:
+                logger.warning(f"Groq fallback failed: {e}")
+
         # 3. Fallback to MockProvider
         logger.info(f"Gateway using fallback provider: mock")
         return await self.adapters["mock"].generate_chat(messages=messages, model=target_model, **kwargs)
