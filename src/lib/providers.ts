@@ -5,18 +5,19 @@ export const PROVIDERS: ProviderConfig[] = [
   { id: 'zaraki', name: 'ZARAKI AI', display: '⚡ ZARAKI AI (Built-in Gateway)', endpoint: '/api/v1/chat', defaultModel: 'auto' },
   { id: 'omniroute', name: 'OMNIROUTE', display: '🚀 OMNIROUTE (Free Gateway)', endpoint: '/api/ai/chat', defaultModel: 'auto' },
   { id: 'simulation', name: 'SIMULATION', display: 'Built-in', endpoint: '', defaultModel: '' },
+  { id: 'ollama', name: 'OLLAMA', display: '🦙 OLLAMA (Local localhost:11434)', endpoint: 'http://localhost:11434/v1/chat/completions', defaultModel: 'llama3' },
   { id: 'featherless', name: 'FEATHERLESS', display: '⚡ FEATHERLESS', endpoint: 'https://api.featherless.ai/v1/chat/completions', defaultModel: 'Qwen/Qwen2.5-72B-Instruct' },
   { id: 'openai', name: 'OPENAI', display: 'OPENAI', endpoint: 'https://api.openai.com/v1/chat/completions', defaultModel: 'gpt-4o' },
-  { id: 'anthropic', name: 'ANTHROPIC', display: 'ANTHROPIC', endpoint: 'https://api.anthropic.com/v1/messages', defaultModel: 'claude-sonnet-4-20250514' },
+  { id: 'anthropic', name: 'ANTHROPIC', display: 'ANTHROPIC', endpoint: 'https://api.anthropic.com/v1/messages', defaultModel: 'claude-3-5-sonnet-20241022' },
   { id: 'deepseek', name: 'DEEPSEEK', display: 'DEEPSEEK', endpoint: 'https://api.deepseek.com/chat/completions', defaultModel: 'deepseek-chat' },
   { id: 'groq', name: 'GROQ', display: 'GROQ', endpoint: 'https://api.groq.com/openai/v1/chat/completions', defaultModel: 'llama-3.3-70b-versatile' },
   { id: 'mistral', name: 'MISTRAL', display: 'MISTRAL', endpoint: 'https://api.mistral.ai/v1/chat/completions', defaultModel: 'mistral-large-latest' },
-  { id: 'openrouter', name: 'OPENROUTER', display: 'OPENROUTER', endpoint: 'https://openrouter.ai/api/v1/chat/completions', defaultModel: 'google/gemini-2.5-flash' },
-  { id: 'gemini', name: 'GEMINI', display: 'GEMINI', endpoint: 'https://generativelanguage.googleapis.com/v1beta/openai/chat/completions', defaultModel: 'gemini-2.5-flash' },
+  { id: 'openrouter', name: 'OPENROUTER', display: 'OPENROUTER', endpoint: 'https://openrouter.ai/api/v1/chat/completions', defaultModel: 'google/gemini-2.0-flash-001' },
+  { id: 'gemini', name: 'GEMINI', display: 'GEMINI', endpoint: 'https://generativelanguage.googleapis.com/v1beta/openai/chat/completions', defaultModel: 'gemini-2.0-flash' },
   { id: 'cohere', name: 'COHERE', display: 'COHERE', endpoint: 'https://api.cohere.ai/compatibility/v1/chat/completions', defaultModel: 'command-r-plus' },
   { id: 'together', name: 'TOGETHER AI', display: 'TOGETHER AI', endpoint: 'https://api.together.xyz/v1/chat/completions', defaultModel: 'meta-llama/Llama-3.3-70B-Instruct-Turbo' },
   { id: 'perplexity', name: 'PERPLEXITY', display: 'PERPLEXITY', endpoint: 'https://api.perplexity.ai/chat/completions', defaultModel: 'sonar' },
-  { id: 'xai', name: 'XAI / GROK', display: 'XAI / GROK', endpoint: 'https://api.x.ai/v1/chat/completions', defaultModel: 'grok-3' },
+  { id: 'xai', name: 'XAI / GROK', display: 'XAI / GROK', endpoint: 'https://api.x.ai/v1/chat/completions', defaultModel: 'grok-2' },
   { id: 'custom', name: 'CUSTOM URL', display: 'CUSTOM URL', endpoint: '', defaultModel: '' },
 ];
 
@@ -219,7 +220,22 @@ export async function callProvider(
           citations: config.citations || []
         };
       } else {
-        // ── Free unauthenticated fallback (/api/ai/chat) ──
+        // ── Free gateway fallback (/api/ai/chat) ──
+        let clientApiKey = config.apiKey || '';
+        if (!clientApiKey && typeof window !== 'undefined') {
+          try {
+            clientApiKey = (
+              localStorage.getItem('zyx_k_gemini') || 
+              localStorage.getItem('zyx_k_groq') || 
+              localStorage.getItem('zyx_k_openai') || 
+              localStorage.getItem('zrk_k_gemini') || 
+              localStorage.getItem('zrk_k_groq') || 
+              localStorage.getItem('zrk_k_openai') || 
+              ''
+            ).replace(/^"|"$/g, '').trim();
+          } catch {}
+        }
+
         resp = await fetch('/api/ai/chat', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
@@ -230,17 +246,21 @@ export async function callProvider(
               ...cleanUserMessages
             ],
             model: config.customModel || 'auto',
-            citations: config.citations || []
+            citations: config.citations || [],
+            api_key: clientApiKey || undefined,
           })
         });
 
         if (!resp.ok) {
-          return { content: '', error: `Zaraki Gateway error HTTP ${resp.status}. Ensure backend is online.` };
+          const errData = await resp.json().catch(() => ({}));
+          const errMsg = errData?.error?.message || errData?.error || `HTTP ${resp.status}`;
+          return { content: '', error: `Zaraki Gateway Error: ${errMsg}` };
         }
 
         const data = await resp.json();
         if (data.error) {
-          return { content: '', error: `Zaraki Gateway: ${data.error}` };
+          const errMsg = typeof data.error === 'object' ? (data.error.message || JSON.stringify(data.error)) : data.error;
+          return { content: '', error: `Zaraki Gateway Error: ${errMsg}` };
         }
 
         const rawAnswer = data.response || data.answer || data.text || '';

@@ -228,17 +228,117 @@ Regarding: **"${userPrompt.slice(0, 100)}"**
 
 async function executeModelChat(
   messages: Array<{ role: string; content: string }>,
-  model: string = 'gemini-3.8-flash',
-  systemInstruction?: string
+  model: string = 'gemini-2.0-flash',
+  systemInstruction?: string,
+  userApiKey?: string
 ): Promise<string> {
   const lastUserMsg = [...messages].reverse().find(m => m.role === 'user')?.content || '';
+  const trimmedKey = (userApiKey || '').trim();
 
-  // 1. Try Gemini API via @google/genai if API key is provided
-  const apiKey = process.env.GEMINI_API_KEY;
-  if (apiKey) {
+  // 1. Resolve Provider Key candidates
+  // Gemini key
+  const geminiKey = (trimmedKey && !trimmedKey.startsWith('gsk_') && !trimmedKey.startsWith('sk-') && !trimmedKey.startsWith('zk_'))
+    ? trimmedKey
+    : (process.env.GEMINI_API_KEY || '').trim();
+
+  // Groq key (starts with gsk_ or GROQ_API_KEY in env)
+  const groqKey = trimmedKey.startsWith('gsk_')
+    ? trimmedKey
+    : (process.env.GROQ_API_KEY || '').trim();
+
+  // OpenAI key (starts with sk- and not sk-ant- or OPENAI_API_KEY in env)
+  const openaiKey = (trimmedKey.startsWith('sk-') && !trimmedKey.startsWith('sk-ant-') && !trimmedKey.startsWith('zk_'))
+    ? trimmedKey
+    : (process.env.OPENAI_API_KEY || '').trim();
+
+  // 2. Determine execution target
+  const isGroqModel = model.includes('llama') || model.includes('mixtral') || model.includes('groq');
+  const isOpenAiModel = model.includes('gpt') || model.includes('o1') || model.includes('o3');
+
+  // Attempt Groq if requested or if only Groq key is present
+  if ((isGroqModel && groqKey) || (groqKey && !geminiKey && !openaiKey)) {
     try {
-      const ai = new GoogleGenAI();
-      const selectedModel = model && model.includes('argon') ? 'gemini-4-argon' : 'gemini-3.8-flash';
+      const groqModel = model && model !== 'auto' && isGroqModel ? model : 'llama-3.3-70b-versatile';
+      const resp = await fetch('https://api.groq.com/openai/v1/chat/completions', {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${groqKey}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          model: groqModel,
+          messages: [
+            ...(systemInstruction ? [{ role: 'system', content: systemInstruction }] : []),
+            ...messages.map(m => ({ role: m.role, content: m.content })),
+          ],
+          temperature: 0.3,
+        }),
+      });
+
+      if (resp.ok) {
+        const data = await resp.json();
+        const content = data.choices?.[0]?.message?.content;
+        if (content) return content;
+      } else {
+        const errJson = await resp.json().catch(() => ({}));
+        const errMsg = errJson?.error?.message || `HTTP ${resp.status}`;
+        console.error('Groq API Error:', errMsg);
+        if (trimmedKey.startsWith('gsk_')) {
+          throw new Error(`Groq API Error: ${errMsg}`);
+        }
+      }
+    } catch (err: any) {
+      if (trimmedKey.startsWith('gsk_')) throw err;
+      console.warn('Groq execution failed, trying next provider:', err?.message || err);
+    }
+  }
+
+  // Attempt OpenAI if requested or if only OpenAI key is present
+  if ((isOpenAiModel && openaiKey) || (openaiKey && !geminiKey && !groqKey)) {
+    try {
+      const oaiModel = model && model !== 'auto' && isOpenAiModel ? model : 'gpt-4o-mini';
+      const resp = await fetch('https://api.openai.com/v1/chat/completions', {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${openaiKey}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          model: oaiModel,
+          messages: [
+            ...(systemInstruction ? [{ role: 'system', content: systemInstruction }] : []),
+            ...messages.map(m => ({ role: m.role, content: m.content })),
+          ],
+          temperature: 0.3,
+        }),
+      });
+
+      if (resp.ok) {
+        const data = await resp.json();
+        const content = data.choices?.[0]?.message?.content;
+        if (content) return content;
+      } else {
+        const errJson = await resp.json().catch(() => ({}));
+        const errMsg = errJson?.error?.message || `HTTP ${resp.status}`;
+        console.error('OpenAI API Error:', errMsg);
+        if (trimmedKey.startsWith('sk-')) {
+          throw new Error(`OpenAI API Error: ${errMsg}`);
+        }
+      }
+    } catch (err: any) {
+      if (trimmedKey.startsWith('sk-')) throw err;
+      console.warn('OpenAI execution failed, trying next provider:', err?.message || err);
+    }
+  }
+
+  // Attempt Gemini API via @google/genai (default primary provider)
+  if (geminiKey) {
+    try {
+      const ai = new GoogleGenAI({ apiKey: geminiKey });
+      // Map requested models to real, verified Google models
+      const selectedModel = (model && model.includes('1.5')) 
+        ? 'gemini-1.5-flash' 
+        : 'gemini-2.0-flash';
       
       const contents = messages
         .filter(m => m.role !== 'system')
@@ -258,12 +358,54 @@ async function executeModelChat(
         return response.text;
       }
     } catch (err: any) {
-      console.warn('Gemini API execution error, falling back to LCM reasoning engine:', err?.message || err);
+      console.error('Gemini API Error:', err?.message || err);
+      // If user supplied a key specifically for Gemini or if it's the configured provider, report the actual error
+      throw new Error(`Google Gemini Error (${err?.status || 'API Error'}): ${err?.message || 'Inference failed. Check API key validity.'}`);
     }
   }
 
-  // 2. LCM Deep Reasoning Synthesis Engine fallback
-  return generateLCMReasoning(lastUserMsg, systemInstruction);
+  // Attempt Local Ollama (localhost:11434)
+  try {
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 2000);
+    const ollamaResp = await fetch('http://127.0.0.1:11434/api/chat', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        model: 'llama3',
+        messages: [
+          ...(systemInstruction ? [{ role: 'system', content: systemInstruction }] : []),
+          ...messages.map(m => ({ role: m.role, content: m.content })),
+        ],
+        stream: false,
+      }),
+      signal: controller.signal,
+    });
+    clearTimeout(timeout);
+    if (ollamaResp.ok) {
+      const data = await ollamaResp.json();
+      if (data?.message?.content) return data.message.content;
+    }
+  } catch {
+    // Ollama not running locally
+  }
+
+  // If no live provider key is configured, return an honest diagnostic message
+  return `⚠️ **Live AI Provider Not Configured**
+
+The request was received, but no valid API key was found to run real language model inference.
+
+### How to Enable Live LLM Responses:
+1. **In the Web UI:** Click **⚙ Config** in the top navigation bar, select your provider (**Google Gemini**, **Groq**, or **OpenAI**), and paste your API key.
+2. **In the Server Environment:** Add your key to the project \`.env\` file:
+   \`\`\`env
+   GEMINI_API_KEY=your_gemini_api_key_here
+   # or
+   GROQ_API_KEY=your_groq_api_key_here
+   \`\`\`
+   *(Free API keys can be obtained instantly at [Google AI Studio](https://aistudio.google.com/) or [Groq Console](https://console.groq.com/keys))*.
+
+*Never faking responses — configure a key above to start live multi-model inference.*`;
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -493,7 +635,8 @@ app.post('/api/v1/chat', async (req: Request, res: Response) => {
   const systemMsg = messages.find((m: any) => m.role === 'system')?.content;
 
   try {
-    const responseContent = await executeModelChat(messages, model, systemMsg);
+    const userSuppliedKey = (req.body.provider_key || req.body.api_key || '').trim();
+    const responseContent = await executeModelChat(messages, model, systemMsg, userSuppliedKey);
     const completionId = `chatcmpl-${crypto.randomBytes(12).toString('hex')}`;
 
     return res.json({
@@ -529,7 +672,9 @@ app.post('/api/v1/chat', async (req: Request, res: Response) => {
 
 // POST /api/ai/chat: Free Built-in Gateway (Used by Zaraki AI / Omniroute in client)
 app.post('/api/ai/chat', async (req: Request, res: Response) => {
-  const { message, messages = [], model = 'auto', citations = [] } = req.body;
+  const { message, messages = [], model = 'auto', citations = [], api_key } = req.body;
+  const authHeader = req.headers.authorization || '';
+  const userKey = (api_key || (authHeader.startsWith('Bearer ') ? authHeader.replace(/^Bearer\s+/i, '') : '')).trim();
 
   const chatMessages = messages.length > 0 
     ? messages 
@@ -538,7 +683,7 @@ app.post('/api/ai/chat', async (req: Request, res: Response) => {
   const systemMsg = chatMessages.find((m: any) => m.role === 'system')?.content;
 
   try {
-    const responseText = await executeModelChat(chatMessages, model, systemMsg);
+    const responseText = await executeModelChat(chatMessages, model, systemMsg, userKey);
 
     return res.json({
       response: responseText,

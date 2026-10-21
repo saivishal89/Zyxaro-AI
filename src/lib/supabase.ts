@@ -7,11 +7,13 @@ export const isSupabaseConfigured = Boolean(
   supabaseUrl && 
   supabaseAnonKey && 
   supabaseUrl !== 'https://placeholder.supabase.co' &&
-  !supabaseUrl.includes('your-supabase-url')
+  !supabaseUrl.includes('your-supabase-url') &&
+  !supabaseUrl.includes('wknyflkjkwqxzcxfbzdz') &&
+  !supabaseUrl.includes('example.supabase.co')
 )
 
 if (!isSupabaseConfigured) {
-  console.info('[Zaraki AI] Supabase credentials not fully configured. Running in Guest/Offline mode.')
+  console.info('[Zaraki AI] Supabase credentials not configured or using placeholder. Running in Guest/Offline mode.')
 }
 
 export const supabase = createClient(
@@ -19,9 +21,10 @@ export const supabase = createClient(
   isSupabaseConfigured ? supabaseAnonKey : 'placeholder-key',
   {
     auth: {
-      autoRefreshToken: true,
-      persistSession: true,
-      detectSessionInUrl: true,
+      autoRefreshToken: isSupabaseConfigured,
+      persistSession: isSupabaseConfigured,
+      detectSessionInUrl: isSupabaseConfigured,
     },
   }
 )
+
