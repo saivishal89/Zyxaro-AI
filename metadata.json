@@ -1,0 +1,6 @@
+{
+  "name": "ZYXARO AI",
+  "description": "Private, local-first multi-model AI research stack with sub-500ms parallel queries across 18+ AI providers, local document RAG, and export capabilities.",
+  "permissions": [],
+  "capabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

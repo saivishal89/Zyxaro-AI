@@ -1,0 +1,59 @@
+[
+  {
+    "id": "key_live_7ff255ee5e9a",
+    "key_id": "zk_live_94ec9de2",
+    "name": "Automated Test Key",
+    "prefix": "zk_live_",
+    "last4": "5fef",
+    "key_hash": "8edfbe40b24aaa343e09da0738ed11fa8ef80f32fafdb951cfbeb605f0f8e4a2",
+    "environment": "live",
+    "scopes": [
+      "chat"
+    ],
+    "is_active": false,
+    "rate_limit_rpm": 60,
+    "monthly_quota": 10000,
+    "request_count": 1,
+    "created_at": "2026-10-21T07:28:46.105Z",
+    "last_used_at": "2026-10-21T07:29:01.483Z",
+    "revoked_at": "2026-10-21T07:29:19.845Z"
+  },
+  {
+    "id": "key_prod_default_01",
+    "key_id": "zk_live_01",
+    "name": "Default Production Gateway",
+    "prefix": "zk_live_",
+    "last4": "9842",
+    "key_hash": "052abab8207db0c2e73385ca0c96b832007a28fb1cbc6eeba7048505a7cb029d",
+    "environment": "live",
+    "scopes": [
+      "chat",
+      "research",
+      "rag"
+    ],
+    "is_active": true,
+    "rate_limit_rpm": 120,
+    "monthly_quota": 50000,
+    "request_count": 142,
+    "created_at": "2026-10-14T07:28:29.752Z",
+    "last_used_at": "2026-10-21T06:28:29.753Z"
+  },
+  {
+    "id": "key_test_sandbox_02",
+    "key_id": "zk_test_02",
+    "name": "Testing Sandbox Key",
+    "prefix": "zk_test_",
+    "last4": "4110",
+    "key_hash": "53aef1f328fc703b457eba8d4c319c91d93be47da8ab093b293999c028e4e7e7",
+    "environment": "test",
+    "scopes": [
+      "chat"
+    ],
+    "is_active": true,
+    "rate_limit_rpm": 60,
+    "monthly_quota": 10000,
+    "request_count": 18,
+    "created_at": "2026-10-18T07:28:29.753Z",
+    "last_used_at": "2026-10-21T05:28:29.753Z"
+  }
+]
