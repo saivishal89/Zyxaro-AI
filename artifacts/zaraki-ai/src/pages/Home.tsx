@@ -11,6 +11,9 @@ import { LeadershipModal } from '@/components/LeadershipModal';
 import { CaseStudiesModal } from '@/components/CaseStudiesModal';
 import { ApiKeyModal } from '@/components/ApiKeyModal';
 import { StickyMobileCta } from '@/components/StickyMobileCta';
+import { EmailVerificationBanner } from '@/components/EmailVerificationBanner';
+import { OnboardingTour } from '@/components/OnboardingTour';
+import { ErrorBoundary } from '@/components/ErrorBoundary';
 
 export default function Home() {
   return (
@@ -32,12 +35,15 @@ export default function Home() {
       </div>
       
       <Header />
+      <EmailVerificationBanner />
       <SimulationBanner />
       
-      <div className="flex-1 flex overflow-hidden pb-14 md:pb-0">
-        <Sidebar />
-        <ChatArea />
-      </div>
+      <ErrorBoundary fallbackTitle="Chat Terminal Exception">
+        <div className="flex-1 flex overflow-hidden pb-14 md:pb-0">
+          <Sidebar />
+          <ChatArea />
+        </div>
+      </ErrorBoundary>
 
       <ConfigPanel />
       <RagDrawer />
@@ -47,6 +53,7 @@ export default function Home() {
       <CaseStudiesModal />
       <ApiKeyModal />
       <StickyMobileCta />
+      <OnboardingTour />
     </div>
   );
 }
