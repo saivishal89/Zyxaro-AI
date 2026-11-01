@@ -10,7 +10,7 @@ export const PROVIDERS: ProviderConfig[] = [
   { id: 'openai', name: 'OPENAI', display: 'OPENAI', endpoint: 'https://api.openai.com/v1/chat/completions', defaultModel: 'gpt-4o' },
   { id: 'anthropic', name: 'ANTHROPIC', display: 'ANTHROPIC', endpoint: 'https://api.anthropic.com/v1/messages', defaultModel: 'claude-3-5-sonnet-20241022' },
   { id: 'deepseek', name: 'DEEPSEEK', display: 'DEEPSEEK', endpoint: 'https://api.deepseek.com/chat/completions', defaultModel: 'deepseek-chat' },
-  { id: 'groq', name: 'GROQ', display: 'GROQ', endpoint: 'https://api.groq.com/openai/v1/chat/completions', defaultModel: 'llama-3.3-70b-versatile' },
+  { id: 'groq', name: 'GROQ', display: 'GROQ', endpoint: 'https://api.groq.com/openai/v1/chat/completions', defaultModel: 'llama-3.1-8b-instant' },
   { id: 'mistral', name: 'MISTRAL', display: 'MISTRAL', endpoint: 'https://api.mistral.ai/v1/chat/completions', defaultModel: 'mistral-large-latest' },
   { id: 'openrouter', name: 'OPENROUTER', display: 'OPENROUTER', endpoint: 'https://openrouter.ai/api/v1/chat/completions', defaultModel: 'google/gemini-2.0-flash-001' },
   { id: 'gemini', name: 'GEMINI', display: 'GEMINI', endpoint: 'https://generativelanguage.googleapis.com/v1beta/openai/chat/completions', defaultModel: 'gemini-2.0-flash' },
